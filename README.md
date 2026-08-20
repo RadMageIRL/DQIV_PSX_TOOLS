@@ -27,6 +27,7 @@ dq4/
   hbd.py          archive block and sub-block access
   textblock.py    text sub-block header parsing
   huffman.py      Huffman decode and encode
+  corpus.py       decoded corpus generator
   dictionary.py   phrase dictionary parse and expansion
   lzs.py          LZSS decompression
   lzs_comp.py     LZSS compression
@@ -46,16 +47,39 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Twenty one gates cover the disc hash, the block scan, the sub-block census, the text
+Twenty two gates cover the disc hash, the block scan, the sub-block census, the text
 header invariants, a known-good decode, a byte-exact round trip, the dictionary, the
-sector table, the control code census, the atlas geometry, LZS decompression and the
-STR video band.
+sector table, the control code census, the atlas geometry, LZS decompression, the
+STR video band and the corpus roll-up hash.
 
 Two of them, gates 9 and 10, exist because of a specific failure. A decoder that had
 collapsed to a two-leaf tree passed the byte-exact round trip on 1,527 of 1,528 blocks,
 because a degenerate tree round-trips any bitstream perfectly. Only the corpus bits per
 symbol figure exposed it. **Any gate that can pass degenerately carries a companion, or
 it does not ship.**
+
+## The corpus and its roll-up hash
+
+```
+python -m dq4.corpus --disc "path/to/Dragon Quest IV (Japan).bin" --out corpus/
+```
+
+Regenerates the whole decoded corpus from scratch. **The output is a complete
+decoded script of a copyrighted game and never belongs in a repository.** Both
+repos ignore `corpus/` by name.
+
+`MANIFEST.md` carries a single SHA-256 over the sorted per-file hashes. That one
+value answers "did the decoder change" without rerunning a gate, and gate 22
+checks it.
+
+**The rule: after any library change, regenerate and diff. If the roll-up moves,
+review the diff line by line before accepting the new value. Never accept a moved
+hash by regenerating the expectation.** The expected hash lives in the library, in
+`dq4/corpus.py`, not in the corpus, so the baseline cannot silently update itself.
+
+The reason this exists: in Phase 1 a collapsed decoder passed the byte-exact round
+trip on 1,527 of 1,528 blocks while producing entirely different text. Every gate
+stayed green. A roll-up hash catches that class immediately.
 
 ## Using it
 

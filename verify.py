@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs
+from dq4 import corpus as corpusmod
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -62,6 +63,9 @@ class Report:
 def main():
     ap = argparse.ArgumentParser(description="verify the dq4 library against a disc image")
     ap.add_argument("--dq4", required=True, help="path to the DQ4 (Japan) .bin disc image")
+    ap.add_argument("--corpus-out", default=None,
+                    help="directory for gate 22 to regenerate the corpus into; "
+                         "gate 22 is skipped when omitted")
     args = ap.parse_args()
 
     rep = Report()
@@ -284,6 +288,15 @@ def main():
              "%d / %d sane, %s, %d frames, %d streams"
              % (sane, len(vrows), sorted(dims), frames, streams),
              "26635 / 26635, [(128, 120)], 5327 frames, 40 streams")
+
+    # 22  corpus roll-up
+    if args.corpus_out:
+        roll, *_ = corpusmod.build(args.dq4, args.corpus_out)
+        rep.gate(22, "corpus roll-up hash", roll == corpusmod.ROLLUP_EXPECTED,
+                 roll[:16] + "...", corpusmod.ROLLUP_EXPECTED[:16] + "...")
+    else:
+        print("  SKIP gate 22  corpus roll-up hash                          "
+              "pass --corpus-out <dir> to run it")
 
     return 0 if rep.summary() else 1
 
