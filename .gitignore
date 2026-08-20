@@ -1,0 +1,29 @@
+# Disc images and anything extracted from them. Never commit game data.
+*.bin
+*.cue
+*.img
+*.iso
+*.nds
+*.raw
+HBD1PS1D.*
+SLPM_*
+SLUS*
+SYSTEM.CNF
+
+# Decoded corpora and bulk dumps
+*.corpus
+*.dump
+corpus/
+dumps/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

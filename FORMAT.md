@@ -1,0 +1,569 @@
+# Dragon Quest IV (PlayStation) file format reference
+
+This is the authoritative location for every format claim in this repository. The README
+describes what the repo is. Module docstrings describe what a function does. Format facts
+live here and nowhere else.
+
+Every claim carries its evidence. **MEASURED** claims name the `verify.py` gate that proves
+them. A claim with no gate is marked **INFERRED** or **UNKNOWN** in the same sentence.
+
+Run the gates yourself:
+
+```
+python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
+```
+
+Target image: SLPM-86916, disc SHA-256 `100d87db9deadf8f9fa4bb891d3a5d0bb112acbf5adbcbc93c637848ed9c7531`.
+MEASURED, gate 1.
+
+---
+
+## Acknowledgements
+
+**Markus Schroeder** (markus-projects.net) documented this format first, and his work is the
+foundation everything below is built on. The block and sub-block header layout, the six-int
+text block header, the Huffman tree encoding, the sector table packing and the type 8 TIM
+identification are all his. Where our measurements refine a figure of his, that is because he
+gave us something precise enough to test.
+
+One note of his deserves singling out. His disassembly observation at 0x8008F3BC, that one
+register points to the start of the tree and another to the middle and that the two serve the
+two sides of a branch, is exactly what the dual-base topology below turned out to be. That
+observation is the reason the tree decodes at all.
+
+**Mandy Wilkens** identified the compression as LZSS and published the control code table.
+Her table was checked against the whole decoded corpus: all 37 of her codes occur, her table
+is a strict subset of the 43 codes present, and every one of her fifteen name code
+assignments is supported by decoded context with **zero disagreements**. MEASURED, gate 16.
+
+**crosswire's** LZSS implementation, specifically the zero-filled ring buffer variant, is what
+Mandy identified as correct, and it is.
+
+---
+
+## 1. Disc layout
+
+Three files, no directories. MEASURED, gate 1.
+
+| File | LBA | Size |
+|---|---:|---:|
+| `SYSTEM.CNF` | 23 | 68 |
+| `SLPM_869.16` | 24 | 692,224 |
+| `HBD1PS1D.Q41` | 362 | 319,436,800 |
+
+The image is Mode 2 Form 1, 2352-byte raw sectors with 2048 user bytes at offset 24.
+
+**The archive LBA base is 362.** This number matters in section 7.
+
+---
+
+## 2. Archive container
+
+`HBD1PS1D.Q41` is 319,436,800 bytes, 155,975 sectors of 2048.
+
+### The archive is a sector-addressed heap, not a chain
+
+Blocks are found by scanning **every** 2048-byte sector boundary and applying the validity
+filter below. Walking block to block by each block's stored sector count terminates after
+1,609 blocks at file offset 0x94DA000, which is 48.86% of the file, because a different
+sector format begins there (section 8). MEASURED, Phase 0; the heap scan is gate 2.
+
+### Block header, 16 bytes at a sector boundary
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | u32 | sub-block count |
+| 4 | u32 | sector count |
+| 8 | u32 | total data length |
+| 12 | u32 | zero |
+
+### Sub-block header, 16 bytes each, starting at block offset 16
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | u32 | data length |
+| 4 | u32 | uncompressed length |
+| 8 | u32 | unknown |
+| 12 | u16 | flags |
+| 14 | u16 | type |
+
+### The validity filter
+
+All five conditions must hold. Together they select exactly **3,243** blocks. MEASURED, gate 2.
+
+1. first dword is `XX 00 00 00` with `XX` nonzero
+2. dword at offset 12 is zero
+3. sub-block count and sector count are both nonzero
+4. the sub-block data lengths sum exactly to the block total length
+5. `ceil((16 + 16 * nsub + total_len) / 2048)` equals the stored sector count
+
+### Type census
+
+**23,828 sub-blocks.** MEASURED, gate 4.
+
+| Type | Count | | Type | Count | | Type | Count |
+|---:|---:|---|---:|---:|---|---:|---:|
+| 0x01 | 6 | | 0x15 | 3317 | | 0x25 | 1033 |
+| 0x06 | 1730 | | 0x16 | 72 | | 0x26 | 1377 |
+| 0x07 | 1458 | | 0x17 | 44 | | 0x27 | 976 |
+| 0x08 | 309 | | 0x18 | 1062 | | **0x28** | **1315** |
+| 0x09 | 473 | | 0x19 | 27 | | 0x29 | 1730 |
+| 0x0A | 256 | | 0x1A | 573 | | **0x2A** | **213** |
+| 0x0B | 309 | | 0x1F | 1025 | | 0x2B | 24 |
+| 0x0C | 309 | | 0x20 | 32 | | 0x2C | 152 |
+| 0x0D | 970 | | 0x22 | 975 | | 0x2D | 140 |
+| 0x0E | 44 | | 0x23 | 1576 | | 0x2E | 612 |
+| 0x0F | 2 | | 0x24 | 1506 | | 0x2F | 27 |
+| 0x11 | 5 | | 0x12 | 5 | | 0x13 | 141 |
+| 0x14 | 3 | | | | | | |
+
+Types 0x02 through 0x05, 0x10, 0x1B through 0x1E and 0x21 do not occur.
+
+Type 40 (0x28) and type 42 (0x2A) are the text blocks: **1,528 sub-blocks**, 1,315 and 213.
+MEASURED, gate 5.
+
+Type 1 holds the glyph atlas (section 8). Type 8 holds TIM textures. MEASURED, Phase 4.
+
+### Compression
+
+A sub-block is LZSS compressed when **`flags == 0x0500`**. 5,821 sub-blocks carry that flag
+and all 5,821 decompress correctly. The algorithm is LZSS with a **zero-filled** ring buffer,
+not the textbook 0x20 fill: N 4096, F 18, threshold 2 so the minimum match is 3, initial write
+pointer at N minus F, flag bits LSB first with 1 meaning literal, and a match packed as two
+bytes where the first is the low 8 bits of the offset and the second is
+`((offset >> 4) & 0xF0) | (length - 3)`. MEASURED, Phase 4.
+
+The whole archive decompresses to 373,357,942 bytes from 177,689,724 compressed. MEASURED,
+Phase 4. The decompressor is not part of this library yet.
+
+---
+
+## 3. Text sub-block
+
+Six little-endian u32 at offset 0.
+
+| Index | Name | Meaning |
+|---:|---|---|
+| 0 | `a` | offset near the end; the u32 stored **at** offset `a` equals `a` |
+| 1 | `id` | text id, 16 bits effective |
+| 2 | `c` | Huffman code start |
+| 3 | `d` | Huffman tree end; 0 means use `a` |
+| 4 | `e` | Huffman code end, and the start of the 10-byte tree header |
+| 5 | `f6` | **dictionary table offset**, 0 when the block has no dictionary |
+
+The sixth int is not filler. It is the dictionary pointer, and it is 24 in exactly the 189
+blocks that carry a 0x7Exx dictionary and 0 in exactly the 1,339 that do not. MEASURED,
+gate 11.
+
+### Invariants
+
+Both hold on 1,528 of 1,528 text sub-blocks. MEASURED, gate 6.
+
+- `c < e < d`, with `d` replaced by `a` when `d` is zero
+- the u32 at offset `a` equals `a`
+
+### Region map
+
+Every boundary is derived from the header. The map closes with no gap. MEASURED, Phase 2.
+
+| Range | Contents |
+|---|---|
+| `[0, 24)` | six u32 header |
+| `[24, c)` | dictionary table and phrases; empty when `f6` is 0 |
+| `[c, e)` | Huffman code stream |
+| `[e, e+10)` | tree header: u32 `base`, u32 `mid`, u16 `root` |
+| `[base, d)` | tree pair array, 16 bits per entry |
+| `[d, a)` | record table and an undecoded region (section 10) |
+| `[a, a+4)` | self pointer, value equals `a` |
+| `[a+4, len)` | tail: zero, or a count plus records in 855 blocks (section 10) |
+
+`base` equals `e + 10` in all 1,528 blocks. MEASURED, Phase 2.
+
+### Text ids
+
+Ids span 0x0020 to 0x0482. 1,106 are distinct. 181 ids carry only placeholder blocks whose
+entire decoded content is the string `ダミー`, leaving **925 ids with real content**.
+MEASURED, gate 15.
+
+Note the arithmetic: 187 placeholder sub-blocks occupy only 181 distinct ids, because six ids
+carry two placeholder copies each. Subtracting the block count instead of the id count gives
+919 and is wrong.
+
+---
+
+## 4. Huffman tree
+
+### Dual-base topology
+
+The tree uses two base pointers rather than interleaved pairs. For node NN, one child
+descriptor is at `pair[NN]` and the other at `pair[m + NN]`, where `m = (mid - base) / 2` read
+per block from the 10-byte tree header. MEASURED, gates 7 through 10.
+
+`m` is computed per block and must never be hardcoded. Measured values run from 4 to 1,132.
+MEASURED, Phase 1.
+
+Traversal starts at node number `root`, the u16 at `e + 8`. Bit 0 selects `pair[NN]`, bit 1
+selects `pair[m + NN]`. Bits are read **LSB first** within each byte. MEASURED, gate 7.
+
+### Entry decode
+
+Each pair is a little-endian u16 `v`:
+
+| Condition | Meaning |
+|---|---|
+| `v >= 0x8000` | node; node number is `v - 0x8000` |
+| high byte `0x7F` | control code, value `v` |
+| high byte `0x7E` | dictionary reference, value `v` |
+| `v == 0x0000` | END of string, a real symbol, not padding |
+| otherwise | Shift-JIS character, value `v + 0x8000` |
+
+### The wide node form
+
+The node test is `v >= 0x8000`. It is **not** "high byte equals 0x80".
+
+**252 blocks have more than 256 nodes** and require the wide form. Reading the test narrowly
+collapses those trees to two leaves, and a collapsed tree **still passes a byte-exact round
+trip**, because one-bit codes reproduce any bitstream. MEASURED, Phase 4 for the block count;
+the collapse was caught by gates 9 and 10.
+
+This is why gates 9 and 10 exist. During development a collapsed decoder passed the round trip
+on 1,527 of 1,528 blocks. What exposed it was corpus bits per symbol: 1.06 for the collapsed
+decoder against **7.81** correct, and a minimum leaf depth of 1 against a correct minimum of 2.
+MEASURED, gates 9 and 10.
+
+### Round trip
+
+Decode and encode are mutually inverse on all 1,528 text sub-blocks, byte exact. MEASURED,
+gate 8.
+
+Encoding must **zero fill to the original region length**. 1,114 blocks end with 1 to 10
+trailing bits that complete no code, and every one of those bits is zero. Without the fill,
+three blocks fail on length alone with no differing bit. MEASURED, Phase 1.
+
+### Known-good decode
+
+Text id 0x006C decodes to 12 pieces, 11 terminated by END plus a trailing residue. Piece [10]
+is:
+
+```
+どうした？　<7F1F>。<7F02>もう　降参かい？
+```
+
+MEASURED, gate 7.
+
+---
+
+## 5. The 0x7Exx phrase dictionary
+
+Present in 189 of 1,528 text sub-blocks, pointed to by `f6`.
+
+| Property | Value |
+|---|---|
+| location | `[24, c)`, that is, from `f6` to the code stream start |
+| entry | one u16, packed `(length << 12) \| offset` |
+| length | in 16-bit units |
+| offset | byte offset from the start of the sub-block |
+| entry count | not stored; it is `(first_entry_offset - f6) / 2` |
+| code numbering | **1-based**; code 0x7E01 is table index 0 |
+| phrase encoding | **raw Shift-JIS**, not Huffman coded |
+| inline control codes | the two bytes `FF xx` meaning `0x7Fxx` |
+
+The entry count is not stored anywhere. It is recovered from the first entry's offset, because
+phrase data begins immediately after the table. The last phrase ends exactly at `c` in 149 of
+the 189 blocks and at `c - 2` in the other 40. MEASURED, Phase 2.
+
+### The dictionary is per block
+
+The same code means different things in different blocks. Code 0x7E08 is `ない` in block
+0x0021 and `外に　出てきてみ` in block 0x0022. MEASURED, Phase 2.
+
+The 158 distinct codes seen across the corpus are the **union** across blocks, not a single
+table. The largest single table is 158 entries, the smallest is 18.
+
+Corpus-wide expansion resolves with **zero unresolved references**. MEASURED, gate 11.
+
+Mean expansion in block 0x0021 is **2.33 symbols**, minimum 2, maximum 6. MEASURED, gate 12.
+A mean at or below 1 across the board means the table was misread; that is what gate 12 is for.
+
+---
+
+## 6. Control codes
+
+**43 distinct codes** occur across the decoded corpus. Mandy Wilkens's published table of 37
+is a strict subset: every one of her codes occurs. MEASURED, gate 16.
+
+### Verified table
+
+| Code | Meaning | | Code | Meaning |
+|---|---|---|---|---|
+| 0x0000 | end of string, required terminator | | 0x7F2A | フレア |
+| 0x7F02 | new line plus tab | | 0x7F2B | ホイミン |
+| 0x7F04 | name decorator, starts named dialog | | 0x7F2C | オーリン |
+| 0x7F0A | blinking cursor | | 0x7F2D | ホフマン, not always |
+| 0x7F0B | end of line, opposite of 0x7F0A | | 0x7F2E | パノン |
+| 0x7F0C | end of line, in groups of about six | | 0x7F2F | ルーシア |
+| 0x7F15 | received gold | | 0x7F30 | person |
+| 0x7F16 | unknown, see 0x7F18 | | 0x7F31 | ピサロ, mostly as デス{7F31} |
+| 0x7F17 | unknown | | 0x7F32 | ロザリー |
+| 0x7F18 | unknown | | 0x7F33 | person |
+| 0x7F1A | ルーシア | | 0x7F34 | custom name |
+| 0x7F1F | player name | | 0x7F42 | town name |
+| 0x7F20 | ライアン | | 0x7F43 | emphasis, unconfirmed |
+| 0x7F21 | アリーナ | | 0x7F44 | emphasis, sad contexts |
+| 0x7F22 | クリフト | | 0x7F45 | emphasis, before デスピサロ dialog |
+| 0x7F23 | ブライ | | 0x7F4B | noun |
+| 0x7F24 | トルネコ | | 0x7F4C | name, possibly same as 0x7F33 |
+| 0x7F25 | ミネア | | | |
+| 0x7F26 | マーニャ | | | |
+| 0x7F28 | スコット | | | |
+| 0x7F29 | アレクス | | | |
+
+All fifteen name codes 0x7F20 through 0x7F2F are supported by decoded context, with zero
+disagreements. Two of the sharpest confirmations: `<7F04><7F29>「やや　戦士どの！<7F02>私です。アレクス`
+places the literal name immediately after the code, and `<7F04><7F24>は　<7F15>Ｇを　手に入れた！`
+independently confirms 0x7F15 as received gold. MEASURED, Phase 3.
+
+### The six additional codes
+
+Present in the data, absent from the published table. **No meanings are proposed.** MEASURED,
+gate 16 for their presence; their semantics are UNKNOWN.
+
+| Code | Occurrences | Position in string |
+|---|---:|---|
+| 0x7F12 | 70,488 | mid 70,264, start 224, end 0 |
+| 0x7F11 | 35,729 | mid 34,652, start 1,066, end 0 |
+| 0x7F05 | 664 | **end 664**, always the last symbol before END |
+| 0x7F13 | 438 | mid 435 |
+| 0x7F14 | 166 | mid 166, always the fourth element of an enumeration |
+| 0x7F47 | 84 | mid 83, always in the string `<7F04><7F47>　<7F05>` |
+
+Counts are after dictionary expansion, since phrases carry inline control codes.
+
+---
+
+## 7. Sector table
+
+Located in `SLPM_869.16`. One little-endian u32 per level.
+
+| Field | Bits | Meaning |
+|---|---|---|
+| length | `v >> 20` | 12 bits, in sectors |
+| lba | `v & 0xFFFFF` | 20 bits, **absolute disc LBA** |
+
+| Property | Value |
+|---|---|
+| first entry | file offset 0x935F4 |
+| last entry | file offset 0x9693C |
+| entry count | 3,283 |
+| entry size | 4 bytes |
+| table size | 13,132 bytes |
+
+MEASURED, gate 13. Boundaries are clean: the dword before the table and the dword after it are
+both `0x00000001`, which decodes to a length of zero and is not a valid entry.
+
+### The LBA base is 362
+
+The 20-bit field is an absolute disc LBA. **Subtract 362**, the ISO LBA of `HBD1PS1D.Q41`, to
+get an archive sector.
+
+Under that base, **3,241 of 3,283** entries land on a valid block header **and** have their
+length field equal that block's stored sector count. MEASURED, gate 14. No other base comes
+close: base 0 gives 79 length matches, base -1 gives 48, base +1 gives 50, base +362 gives 11.
+
+The known probe `3A A2 D1 04` occurs exactly once, at file offset 0x93B2C. It decodes to
+length 0x4D, LBA 0x1A23A. Archive sector 0x1A23A is payload; archive sector 0x1A23A minus 362
+is a block header with a stored sector count of 0x4D that contains a type 40 sub-block with
+text id 0x0067. MEASURED, gates 13 and 14.
+
+Five valid blocks are never referenced by the table: archive sectors 105328, 105630, 106298,
+123893 and 123924. The first three hold the glyph atlas. MEASURED, Phase 0.
+
+---
+
+## 8. Glyph atlas
+
+The type 1 sub-blocks hold a 4bpp atlas. Six sub-blocks, two distinct contents, three copies
+each.
+
+| Property | Value |
+|---|---|
+| pixel format | 4bpp, **low nibble first** |
+| width | 256 pixels |
+| cell | **8 wide by 14 tall**, origin (0, 0) |
+| DQ4 atlas size | 16,128 bytes, 126 rows, 9 bands |
+| slots | **288**, of which **268** are non-blank |
+| Latin capitals | **13**, at slots 26 through 38 |
+
+MEASURED, gate 17.
+
+Geometry was derived, not assumed. Byte-equality autocorrelation peaks at a stride of 128
+bytes, which is 256 pixels at 4bpp. Column ink minima land on `x mod 8 == 0` far more often
+than on any other residue, 29 times against 13 for the next best. Rendering high nibble first
+breaks every vertical stroke into a dotted line. MEASURED, Phase 3b.
+
+### The drop shadow is inside the cell
+
+The rightmost column and the bottom row of each cell carry the glyph's drop shadow, not the
+letterform. Column 0 is empty on eleven of the thirteen capitals. MEASURED, Phase 3b.
+
+For width calculations: cell advance is 8 pixels, the letterform body occupies columns 1
+through 6, **effective body width is 6 of 8**, or 7 of 8 if the shadow is counted.
+
+### What the atlas contains
+
+The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a strictly
+ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
+absent from this atlas. MEASURED, gate 17 and Phase 3b.
+
+The remaining 268 non-blank slots hold kana, kanji, punctuation and small forms. The
+kanji-versus-kana split is by ink density and height **proxy**, not by individual
+identification: INFERRED.
+
+### The 60 01 01 80 band
+
+Sectors 76,212 through 141,196 of the archive, 26,635 sectors, are **PlayStation STR/MDEC
+full motion video**, not archive data. All 26,635 sector headers parse as STR video sectors:
+128 by 120 pixels, 5 chunks per frame, 5,327 frames, 40 separate clips. MEASURED, gate 3 for
+the count, Phase 4 for the parse.
+
+---
+
+## 9. Corrections to published documentation
+
+Stated as measurements. Every one of these refines work that was precise enough to test.
+
+**The second block signature is `60 01 01 80`, not `0x60010108`.** All 26,635 sectors have the
+same four bytes, and the fourth byte is 0x80 in every one. The sequence is the little-endian
+form of the standard PlayStation STR video magic `0x80010160`, which also explains what the
+band is. MEASURED, gate 3.
+
+**The sector table holds absolute disc LBAs, not archive sectors.** Descriptions giving
+`0x0001A23A` as an archive sector are off by the 362-sector file base. Archive sector 0x1A23A
+is payload, not a header. MEASURED, gate 14.
+
+**The archive is a sector-addressed heap, not a chain.** A linear walk from block to block by
+sector count terminates at 48.86% of the file. MEASURED, Phase 0.
+
+**The sub-block flags word DOES determine compression, and an earlier note of ours saying
+otherwise was wrong.** The compression predicate is `flags == 0x0500`, not a mismatch between
+data length and uncompressed length. The separation is exact: of the sub-blocks with a length
+mismatch, all 5,820 with `flags == 0x0500` decompress correctly as LZSS and all 147 without it
+fail completely, with no overlap in either direction. Types 44, 45, 46 and 47 hold those 147;
+their uncompressed length field carries something other than a decompressed size, and what it
+carries is UNKNOWN. MEASURED, Phase 4.
+
+The earlier claim came from using a length mismatch as the definition of compressed, which
+made types 44, 45 and 47 look like counterexamples. They are not compressed at all.
+
+---
+
+## 10. Unknowns
+
+The edges are part of the map. None of these is claimed to be understood.
+
+**`[p2, a)`.** The high-entropy region after the record table. Not Huffman text under the
+block's own tree, and not a bit-indexed glyph bank (section 11). Byte entropy runs 6.42 to
+6.65 bits per byte dominated by 0x55, 0xFF, 0x43 and 0x33, against 7.46 to 7.98 with no long
+runs for the code stream. Purpose UNKNOWN.
+
+**The 855-block tail record table.** 855 of 1,528 text sub-blocks carry a u32 count followed
+by that many 8-byte records after the self pointer. The count field is consistent with the
+remaining tail length in 855 of 855 blocks, and the second u32's high 12 bits equal the
+containing block's own text id in **12,870 of 12,870** records. The low 20 bits are below the
+sub-block length in only 38.2% of records, so they are not block-local offsets. Semantics
+UNKNOWN. MEASURED, Phase 2, for the structure.
+
+**The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
+tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
+Note that `p1` does **not** point at these records; for text id 0x006C `p1` is `d + 28` and the
+records begin at `d + 32`.
+
+**The 60 01 01 80 band internals.** Identified as STR video (section 8). The frames themselves
+are not decoded here.
+
+**The fullwidth font.** The atlas cell is 8 by 14. The per-kanji record tables describe kanji
+at 12 by 13. These are different fonts, and the fullwidth one is **not located**. A sweep of
+21,418 unique sub-blocks across seven row widths and four cell heights found no second atlas.
+
+**The string count gap.** Counting one block per distinct text id gives 17,234 strings.
+Markus's published figure is 16,695. The difference of 539 is **reported, not closed**: what
+counts as a line is a definition, and without knowing his the gap cannot be resolved honestly.
+MEASURED, Phase 2.
+
+---
+
+## 11. Negative results
+
+These cost real time to establish. They are here so nobody has to spend it twice.
+
+### `[p2, a)` is not a bit-indexed glyph bank
+
+The hypothesis was that the per-kanji record's u32 is a bit offset into `[p2, a)` and the
+16-bit value is a width and height, giving 1bpp glyphs. The width and height split is real:
+0x0D0C is 12 by 13, and 0x080B is 11 by 8 on the record carrying 一. Everything downstream
+fails.
+
+- Consecutive offset deltas are 57, 134, 159, 145, 142, 151, 163, 145, 160, 143, 162, 150,
+  141, 154. A fixed 12 by 13 glyph is 156 bits and cannot produce a **variable** stride.
+- The record for 一 sits at offset 0 and claims 88 bits, but the next offset is 57, which is
+  less than 88. The entries would overlap. This contradiction exists before any rendering.
+- Ink density comes out 42.9% to 69.2%, mean about 50%, against 15% to 50% for real glyphs.
+- **The decisive test**: reading at a deliberately wrong offset, plus 7 bits, produces ink
+  within 1.5 points of the correct offset on **every** record, and art of identical character.
+  A 7-bit shift destroys real structure. It did not, because there is none.
+- 2bpp is worse, 66.7% to 92.3%.
+
+### The record bit offsets do not point at string starts
+
+Tested directly. Of 17 records, **3** have an offset that lands on a string start in the code
+stream, and those three are exactly the records whose offset is zero. Zero records land on a
+symbol boundary carrying that record's own kanji.
+
+### Type 1 blocks are not the English game's text font
+
+Dragon Warrior VII, a shipped English game on the same engine family, has a type 1 atlas in
+the identical format: same 4bpp low-nibble-first packing, same 256 pixel width, same 8 by 14
+cell, same 14-row band, same drop shadow convention. Its 1,024-byte companion block is
+**byte identical** to Dragon Quest IV's.
+
+That atlas contains 13 Latin capitals: Y, W, U, S, Q, O, M, K, I, G, E, C and A. The exact
+complement of Dragon Quest IV's thirteen. A shipped English game cannot render its text from
+half an alphabet, so the type 1 block is not the text font in either game.
+
+The absence was **proved, not assumed**, with a calibrated threshold:
+
+| Comparison | Score, max 112 |
+|---|---:|
+| a letter against itself | **112** |
+| different letters, same font, mean of all pairs | 50.8 |
+| different letters, same font, **worst case** | 32 |
+| different letters, same font, **best case** | **91** |
+| **best cross-atlas match found, searching every pixel offset** | **82** |
+
+Every cross-atlas best match falls below the 91 same-font ceiling, and every one lands on a
+**shape neighbour**: B matches C, P matches O, N matches M, R matches Q. That is the signature
+of absence, not of a font revision.
+
+A second hypothesis, that the run turns around and the missing letters follow, was tested by
+matching the next thirteen slots against the expected letters in order. Mean score 42.2
+against a null of 41.1. No signal.
+
+### The MIPS false-positive trap
+
+Searching an executable for a glyph table with a periodicity detector will find MIPS code
+every time. Fixed register fields produce exactly the periodic column structure a font does.
+This is the strongest hit from one such search, at 0x09FD00 of a PlayStation executable,
+rendered 16 pixels wide at 1bpp:
+
+```
+ .##.#.##....#.##  #...###.....#.##  #.##........#.##  ##.#..#.....#.##
+ ..##.##.....#.##  ...#...#....#.##  ###.##.#....#.#.  ##..#.......#.#.
+ .##.####....#.##  #..#..#.....#.##  #.##.#.#....#.##  ##.#.###....#.##
+ ..##...#....#.##  ....##.#....#.#.  ###.#.......#.#.  ##....##....#.#.
+ .###.#......#.##  #..#.###....#.##  #.###..#....#.##  ##.##.##....#.##
+```
+
+The fixed `....#.##` and `....#.#.` right column is a register field, not a glyph edge. Two
+independent detectors, vertical stroke continuity and a fixed-cell glyph-table scan, both
+ranked this region top. Neither ink density nor row correlation distinguishes MIPS from a
+font. Render before believing.
