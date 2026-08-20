@@ -12,11 +12,14 @@ writes to a disc image.
   sectortable   level sector table locate, parse, LBA translation
   glyph         4bpp atlas render and cell extraction
   codes         control code table and census
+  lzs           LZSS decompression
+  lzs_comp      LZSS compression
 
 The user supplies their own disc images. No ROM data ships here.
 """
 
 from . import iso, hbd, textblock, huffman, dictionary, sectortable, glyph, codes
+from . import lzs, lzs_comp
 
 __all__ = ["iso", "hbd", "textblock", "huffman", "dictionary",
-           "sectortable", "glyph", "codes"]
+           "sectortable", "glyph", "codes", "lzs", "lzs_comp"]

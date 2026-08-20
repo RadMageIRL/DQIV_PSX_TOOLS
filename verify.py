@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dq4 import iso as isomod
-from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes
+from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -238,6 +238,52 @@ def main():
     else:
         rep.gate(17, "glyph atlas slots and Latin capitals", False, "atlas not found",
                  "288 slots, 268 non-blank, 13 Latin")
+
+    # 18, 19, 20  LZS
+    flagged = [(s, sb) for s, sb in hbd.sub_blocks(blocks) if sb["flags"] == hbd.FLAG_LZS]
+    mismatch_flagged = [(s, sb) for s, sb in flagged if sb["dlen"] != sb["ulen"]]
+    mismatch_unflagged = [(s, sb) for s, sb in hbd.sub_blocks(blocks)
+                          if sb["flags"] != hbd.FLAG_LZS and sb["dlen"] != sb["ulen"]]
+
+    deltas = collections.Counter()
+    lzs_pass = 0
+    flag_ok = {}
+    for s, sb in flagged:
+        d = lzs.overrun(hbd.sub_bytes(arch, sb), sb["ulen"])
+        deltas[d] += 1
+        ok = 0 <= d <= 17
+        flag_ok[(s, sb["idx"])] = ok
+        if ok:
+            lzs_pass += 1
+    rep.gate(18, "LZS decompress on flags == 0x0500",
+             lzs_pass == 5821 and len(flagged) == 5821,
+             "%d / %d" % (lzs_pass, len(flagged)), "5821 / 5821")
+
+    with_flag = sum(1 for s, sb in mismatch_flagged if flag_ok[(s, sb["idx"])])
+    without_flag_fail = sum(1 for s, sb in mismatch_unflagged
+                            if not (0 <= lzs.overrun(hbd.sub_bytes(arch, sb), sb["ulen"]) <= 17))
+    rep.gate(19, "compression predicate separation",
+             with_flag == 5820 and without_flag_fail == 147
+             and len(mismatch_unflagged) == 147,
+             "%d pass with flag, %d fail without, overlap %d"
+             % (with_flag, without_flag_fail, len(mismatch_unflagged) - without_flag_fail),
+             "5820 pass, 147 fail, overlap 0")
+
+    # 20 COMPANION to gate 18: a decompressor that padded or guessed would not
+    # produce a two-valued delta distribution.
+    two_valued = sorted(deltas.items()) == [(0, 3089), (3, 2732)]
+    rep.gate(20, "LZS overrun distribution  (COMPANION)", two_valued,
+             sorted(deltas.items()), "[(0, 3089), (3, 2732)]")
+
+    # 21
+    vrows = hbd.video_sectors(arch)
+    sane, dims, frames, streams = hbd.video_summary(vrows)
+    rep.gate(21, "STR video band parses",
+             sane == 26635 and len(vrows) == 26635 and dims.get((128, 120)) == 26635
+             and frames == 5327 and streams == 40,
+             "%d / %d sane, %s, %d frames, %d streams"
+             % (sane, len(vrows), sorted(dims), frames, streams),
+             "26635 / 26635, [(128, 120)], 5327 frames, 40 streams")
 
     return 0 if rep.summary() else 1
 

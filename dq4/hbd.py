@@ -116,6 +116,37 @@ def text_sub_blocks(blocks):
     return [(s, sb) for s, sb in sub_blocks(blocks) if sb["type"] in TEXT_TYPES]
 
 
+def video_sectors(buf):
+    """[(sector, chunk, chunks_in_frame, frame, demux, width, height)] for the STR band."""
+    out = []
+    n = len(buf) // SECTOR
+    for s in range(n):
+        o = s * SECTOR
+        if buf[o:o + 4] != VIDEO_MAGIC:
+            continue
+        magic, chunk, nchunk, frame, demux, w, h = struct.unpack_from("<IHHIIHH", buf, o)
+        out.append((s, chunk, nchunk, frame, demux, w, h))
+    return out
+
+
+def video_summary(rows):
+    """(sane_header_count, {(w,h): n}, frame_count, stream_count)."""
+    sane = 0
+    dims = {}
+    resets = 0
+    prev = None
+    for _, chunk, nchunk, frame, _, w, h in rows:
+        if 0 < w <= 640 and 0 < h <= 480 and 0 < nchunk <= 64 and chunk < nchunk:
+            sane += 1
+            dims[(w, h)] = dims.get((w, h), 0) + 1
+        if prev is not None and frame < prev:
+            resets += 1
+        prev = frame
+    chunks = rows[0][2] if rows else 0
+    frames = len(rows) // chunks if chunks else 0
+    return sane, dims, frames, resets + 1 if rows else 0
+
+
 def sub_bytes(buf, sub):
     """Raw (still compressed if it is) bytes of one sub-block."""
     return buf[sub["off"]:sub["off"] + sub["dlen"]]

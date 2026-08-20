@@ -28,6 +28,8 @@ dq4/
   textblock.py    text sub-block header parsing
   huffman.py      Huffman decode and encode
   dictionary.py   phrase dictionary parse and expansion
+  lzs.py          LZSS decompression
+  lzs_comp.py     LZSS compression
   sectortable.py  level sector table access
   glyph.py        glyph atlas rendering
   codes.py        control code table and census
@@ -49,9 +51,10 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Seventeen gates cover the disc hash, the block scan, the sub-block census, the text
+Twenty one gates cover the disc hash, the block scan, the sub-block census, the text
 header invariants, a known-good decode, a byte-exact round trip, the dictionary, the
-sector table, the control code census and the atlas geometry.
+sector table, the control code census, the atlas geometry, LZS decompression and the
+STR video band.
 
 Two of them, gates 9 and 10, exist because of a specific failure. A decoder that had
 collapsed to a two-leaf tree passed the byte-exact round trip on 1,527 of 1,528 blocks,

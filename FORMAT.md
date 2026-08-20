@@ -5,7 +5,7 @@ describes what the repo is. Module docstrings describe what a function does. For
 live here and nowhere else.
 
 Every claim carries its evidence. **MEASURED** claims name the `verify.py` gate that proves
-them. A claim with no gate is marked **INFERRED** or **UNKNOWN** in the same sentence.
+them, or the phase that measured it where no gate covers it. A claim with no gate is marked **INFERRED** or **UNKNOWN** in the same sentence.
 
 Run the gates yourself:
 
@@ -133,8 +133,17 @@ pointer at N minus F, flag bits LSB first with 1 meaning literal, and a match pa
 bytes where the first is the low 8 bits of the offset and the second is
 `((offset >> 4) & 0xF0) | (length - 3)`. MEASURED, Phase 4.
 
+All 5,821 flagged sub-blocks decompress. MEASURED, gate 18. The flag separates the population
+exactly: of the sub-blocks whose two length fields differ, 5,820 carry the flag and decompress,
+147 do not carry it and fail completely, with no overlap. MEASURED, gate 19.
+
+The natural output length is either exactly the declared length (3,089 blocks) or exactly three
+bytes past it (2,732 blocks), and nothing else. That two-valued distribution is the companion
+metric for the decoder: a decompressor that padded or guessed would not produce it. MEASURED,
+gate 20.
+
 The whole archive decompresses to 373,357,942 bytes from 177,689,724 compressed. MEASURED,
-Phase 4. The decompressor is not part of this library yet.
+Phase 4.
 
 ---
 
@@ -375,8 +384,16 @@ length 0x4D, LBA 0x1A23A. Archive sector 0x1A23A is payload; archive sector 0x1A
 is a block header with a stored sector count of 0x4D that contains a type 40 sub-block with
 text id 0x0067. MEASURED, gates 13 and 14.
 
-Five valid blocks are never referenced by the table: archive sectors 105328, 105630, 106298,
-123893 and 123924. The first three hold the glyph atlas. MEASURED, Phase 0.
+**Two** valid blocks are never referenced by the table: archive sectors 123893 and 123924.
+MEASURED, Phase 5.
+
+An earlier count of ours said five, adding 105328, 105630 and 106298. That was wrong. Those
+three are referenced, by entries at file offsets 0x9692C, 0x96930 and 0x96934, which are table
+positions 3278, 3279 and 3280 of 3283. Each decodes to the right archive sector with a length
+field matching the block's stored sector count exactly. The error came from computing coverage
+over the table's contiguous strictly-valid runs rather than over its full extent; those three
+entries sit in the last stretch, past the end of the second run. The three blocks in question
+hold the glyph atlas, so the atlas **is** loaded by the game.
 
 ---
 
@@ -424,7 +441,7 @@ identification: INFERRED.
 Sectors 76,212 through 141,196 of the archive, 26,635 sectors, are **PlayStation STR/MDEC
 full motion video**, not archive data. All 26,635 sector headers parse as STR video sectors:
 128 by 120 pixels, 5 chunks per frame, 5,327 frames, 40 separate clips. MEASURED, gate 3 for
-the count, Phase 4 for the parse.
+the sector count, gate 21 for the parse.
 
 ---
 
@@ -448,9 +465,15 @@ sector count terminates at 48.86% of the file. MEASURED, Phase 0.
 otherwise was wrong.** The compression predicate is `flags == 0x0500`, not a mismatch between
 data length and uncompressed length. The separation is exact: of the sub-blocks with a length
 mismatch, all 5,820 with `flags == 0x0500` decompress correctly as LZSS and all 147 without it
-fail completely, with no overlap in either direction. Types 44, 45, 46 and 47 hold those 147;
-their uncompressed length field carries something other than a decompressed size, and what it
-carries is UNKNOWN. MEASURED, Phase 4.
+fail completely, with no overlap in either direction. Types 44, 45, 46 and 47 hold those 147.
+
+Those 147 are **MIPS overlay code**, not compressed data. Three of the four types open with
+recognizable debug strings followed by a MIPS function prologue: type 47 begins
+`can't get new_fmap!!(%d)(max=%d)`, type 45 begins `buki open NG`, and type 46 opens directly
+with `e8 ff bd 27`, which is `addiu sp, sp, -0x18`. MEASURED, Phase 5. Their uncompressed
+length field is larger than their data length by a ratio between 1.0012 and 4.38, constant
+within types 46 and 47 and variable within 44 and 45; that it represents a runtime size
+including uninitialized data is INFERRED and not tested.
 
 The earlier claim came from using a length mismatch as the definition of compressed, which
 made types 44, 45 and 47 look like counterexamples. They are not compressed at all.
@@ -461,10 +484,11 @@ made types 44, 45 and 47 look like counterexamples. They are not compressed at a
 
 The edges are part of the map. None of these is claimed to be understood.
 
-**`[p2, a)`.** The high-entropy region after the record table. Not Huffman text under the
-block's own tree, and not a bit-indexed glyph bank (section 11). Byte entropy runs 6.42 to
-6.65 bits per byte dominated by 0x55, 0xFF, 0x43 and 0x33, against 7.46 to 7.98 with no long
-runs for the code stream. Purpose UNKNOWN.
+**`[p2, a)`.** The region after the record table. It **is LZS compressed**: it decompresses
+cleanly, consuming its input exactly, at a ratio near 3.2x on the blocks sampled. MEASURED,
+Phase 5. What the decompressed content is remains UNKNOWN. It is not Huffman text under the
+block's own tree, and the decompressed bytes are not a glyph bank indexed by the record table
+(section 11).
 
 **The 855-block tail record table.** 855 of 1,528 text sub-blocks carry a u32 count followed
 by that many 8-byte records after the self pointer. The count field is consistent with the
@@ -547,6 +571,53 @@ of absence, not of a font revision.
 A second hypothesis, that the run turns around and the missing letters follow, was tested by
 matching the next thirteen slots against the expected letters in order. Mean score 42.2
 against a null of 41.1. No signal.
+
+### LZS over `[p2, a)` is not a glyph bank either
+
+Phase 5 tested a different encoding of the same region, since `[p2, a)` sits inside an
+uncompressed sub-block and no earlier sweep had decompressed it. It **does** LZS-decompress
+cleanly. The decompressed bytes are still not a glyph bank.
+
+Record offsets were tested as both bit and byte offsets into the decompressed output, at 1, 2
+and 4 bits per pixel, with width and height taken from the record's own extra field.
+
+- As byte offsets the largest record offset exceeds the decompressed length, so several
+  glyphs fall outside the buffer and render empty.
+- Ink density lands at 0%, 3%, 4%, 7%, 19% and 25% across the first six records at 1bpp,
+  against the 15% to 50% a real glyph occupies.
+- **The offset-plus-7 control fails again.** Ink at the shifted offset matches ink at the
+  correct offset to within a fraction of a point on every record: 25.0 against 25.0, 4.5
+  against 4.5, 0.0 against 0.0. A seven-bit shift destroys real structure.
+- Decompressed length per record is not constant: it ranges from 94.9 to 123.2 bytes, and two
+  blocks with the same record count, 38, decompress to 4,344 and 4,680 bytes.
+
+### The executables do not hold an LZS-compressed font
+
+The LZS decompressor was slid across both executables at every 4-byte-aligned offset, 172,544
+probes for one and 168,448 for the other.
+
+**"Produces 1 KB of output before the stream fails" selects everything.** LZS as specified
+here cannot fail on arbitrary input: every byte sequence decodes to something. On 25,088
+probes of known STR video data, a region that is definitely not LZS, the criterion fired at
+**100.0%**. It has no discriminating power and should not be used as one.
+
+Running the atlas signature detector on the decompressed output does discriminate, and it was
+measured against two baselines:
+
+| Sweep | Probes | Atlas-signature hits | Rate |
+|---|---:|---:|---:|
+| STR video band, definitely not LZS | 25,088 | 0 | 0.0000% |
+| SLPM_869.16 | 172,544 | 311 | 0.1802% |
+| SLUSP012.06 | 168,448 | 453 | 0.2689% |
+| **SLPM_869.16 byte-reversed control** | 172,544 | **401** | **0.2324%** |
+
+The reversed control has identical byte statistics and contains no valid LZS stream at any
+aligned offset, and it produces **more** hits than the real executable. The executable hit
+rates are noise. The STR baseline of zero is misleading on its own, because video data is
+high entropy and never yields the blank rows the detector looks for; the reversed-bytes
+control is the honest comparison.
+
+Every strong hit was rendered anyway. All are sparse scattered pixels with no glyph structure.
 
 ### The MIPS false-positive trap
 
