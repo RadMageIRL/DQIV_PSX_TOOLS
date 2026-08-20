@@ -432,9 +432,17 @@ The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a
 ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
 absent from this atlas. MEASURED, gate 17 and Phase 3b.
 
-The remaining 268 non-blank slots hold kana, kanji, punctuation and small forms. The
-kanji-versus-kana split is by ink density and height **proxy**, not by individual
-identification: INFERRED.
+The remaining non-blank slots hold kana, kanji, punctuation and small forms.
+
+**129 slots are kanji, rendered halfwidth at 8 x 14.** MEASURED, Phase 6, established two ways:
+by rendering them, and by counting horizontal strokes spanning at least 5 of the 8 columns.
+Those 129 average 10.8 such strokes with a minimum of 7, against a mean of 5.3 and a maximum of
+8 for the 13 known Latin capitals. Dense multi-stroke glyphs at that count are kanji.
+
+So DQ4 renders kanji at 8 x 14 from this atlas. It holds 129 of the 1,315 distinct kanji the
+script uses, so it is a partial set and a larger source exists somewhere. That source has not
+been located. The remaining slot classifications, kana against symbols, are still by ink
+density and height **proxy**: INFERRED.
 
 ### The 60 01 01 80 band
 
@@ -499,15 +507,26 @@ UNKNOWN. MEASURED, Phase 2, for the structure.
 
 **The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
 tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
+
+That 16-bit field was once read as a glyph width and height, 0x0D0C as 12 by 13. **That reading
+is withdrawn**: the atlas renders kanji at 8 pixels wide, so a 12-wide glyph dimension cannot
+describe them. MEASURED, Phase 6.
+
+That the table is kanji-related does hold up. Dragon Warrior VII has 2,122 sub-blocks with the
+same six-int text header structure, and every one carries the same `[d, a)` header shape with
+the record area **empty**, 36 bytes in all 2,122, leaving no room for records and no payload
+region at all. A game with no kanji has the structure and none of the content. MEASURED,
+Phase 6.
 Note that `p1` does **not** point at these records; for text id 0x006C `p1` is `d + 28` and the
 records begin at `d + 32`.
 
 **The 60 01 01 80 band internals.** Identified as STR video (section 8). The frames themselves
 are not decoded here.
 
-**The fullwidth font.** The atlas cell is 8 by 14. The per-kanji record tables describe kanji
-at 12 by 13. These are different fonts, and the fullwidth one is **not located**. A sweep of
-21,418 unique sub-blocks across seven row widths and four cell heights found no second atlas.
+**The fullwidth font.** The atlas cell is 8 by 14 and holds 129 kanji at that size. The script
+uses 1,315 distinct kanji, so a larger source exists and is **not located**. A sweep of 21,418
+unique sub-blocks across seven row widths and four cell heights found no second atlas, and the
+console BIOS is ruled out (section 11).
 
 **The string count gap.** Counting one block per distinct text id gives 17,234 strings.
 Markus's published figure is 16,695. The difference of 539 is **reported, not closed**: what
@@ -618,6 +637,37 @@ high entropy and never yields the blank rows the detector looks for; the reverse
 control is the honest comparison.
 
 Every strong hit was rendered anyway. All are sparse scattered pixels with no glyph structure.
+
+### The game does not read kanji from BIOS ROM
+
+The PlayStation carries its own Shift-JIS font in console firmware, so a Japanese game drawing
+kanji through it would contain no fullwidth font on disc. That would have explained every
+negative in the font search. It is not what happens.
+
+Scanning for LUI instructions loading a constant in the BIOS ROM window, immediate 0xBFC0
+through 0xBFC7 or 0x9FC0 through 0x9FC7, word aligned with `rs` zero:
+
+| Scan | Words | Hits |
+|---|---:|---:|
+| `SLPM_869.16` | 173,056 | **0** |
+| `SLUSP012.06`, null control | 168,960 | 0 |
+| STR video band, random baseline | 177,152 | 0 |
+| all 147 MIPS overlay sub-blocks | 582,604 | **0** |
+| all uncompressed sub-blocks | 13,279,218 | **0** |
+
+Zero everywhere, including every place other than the main executable where code lives. A
+byte-pattern search over the whole raw archive at any alignment turns up 7 matching sequences in
+319 MB, five unaligned and two inside compressed data.
+
+This tests direct addressing only. A call into a BIOS kernel routine that internally touched the
+ROM would carry no LUI here, and no kanji service is part of the documented PlayStation BIOS
+API, so the gap is small but real. INFERRED.
+
+Neither BIOS image yields a font to the atlas detector either, and in both the byte-reversed
+control scores higher than the real file: 15 hits against 7 for the US image, 10 against 4 for
+the Japanese one. Their byte diff is 24,367 separate runs with a largest contiguous difference
+of 1,781 bytes, which is a version revision rather than a resource present in one and absent
+from the other.
 
 ### The MIPS false-positive trap
 
