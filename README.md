@@ -34,13 +34,8 @@ dq4/
   glyph.py        glyph atlas rendering
   codes.py        control code table and census
 verify.py         the gate suite
-docs/             phase reports, kept as supporting evidence
 FORMAT.md         the format reference
 ```
-
-`docs/` holds the working reports the library was derived from. They are evidence for
-FORMAT.md, not a second reference; where a report and FORMAT.md disagree, FORMAT.md is
-current and the report is a snapshot.
 
 ## Running the gates
 
