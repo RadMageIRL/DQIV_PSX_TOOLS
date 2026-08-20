@@ -87,4 +87,7 @@ the tree decodable at all.
 
 ## License
 
-See `LICENSE`. Not yet chosen.
+MIT. See `LICENSE`.
+
+The license covers this library. It does not cover the game, and no game data is
+included here.
