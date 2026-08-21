@@ -574,6 +574,11 @@ rebuild is a real content difference rather than a parity artifact.
 `dq4/discbuild.py` writes a file back into a copy of the image, same size and in place only. The
 source is opened read-only and never written.
 
+**Gate 1 fails on any intentionally modified disc, by construction**, because it pins the
+source image's SHA-256. That is the gate working, not a build defect. When verifying a build,
+expect gate 1 to fail and every other gate to pass; gate 22, which rebuilds the whole corpus
+from the output disc, is the one that proves the content survived.
+
 ## 10. Unknowns
 
 The edges are part of the map. None of these is claimed to be understood.
@@ -873,6 +878,37 @@ pad count**, which counted bits after the last decodable symbol rather than afte
 
 Bits per non-empty string: min 9, median 272, p90 573, max 5,331. Bits per displayed character:
 median 7.39.
+
+### Building a tree, not just reading one
+
+MEASURED, Phase 17. `dq4/treebuild.py` emits a tree in the engine's form; the library's own
+decoder walks every array it produces (1,528 of 1,528), and build-encode-decode returns the corpus
+text on every text sub-block (1,528 of 1,528).
+
+Three layout facts hold on **all 1,106 distinct blocks** and must be reproduced by any emitter:
+
+| Invariant | Holds |
+|---|---:|
+| `root == m - 1`, internal nodes numbered in creation order so the root is last | 1,106 / 1,106 |
+| `base == e + 10`, the pair array follows the 10-byte tree header | 1,106 / 1,106 |
+| `npairs == 2m + 1`, m internal nodes, 2m children, one pad pair | 1,106 / 1,106 |
+
+Internal node `nn` owns slots `pair[nn]` and `pair[m + nn]`, so with numbers 0..m-1 every slot
+below 2m is exactly one node's child.
+
+**Heart Beat's builder never emits a depth-1 code.** Their minimum leaf depth is 2 to 5 on every
+block; an ordinary optimal Huffman produces a 1-bit code in 181 of them. Those 181 are *exactly*
+the blocks where an optimal tree beats theirs, by exactly 9 bits each, with zero exceptions in
+either direction. Corpus-wide their coding is within **0.034%** of optimal (4,876,608 bits against
+4,874,947), so this is the only systematic difference.
+
+**An equally optimal tree usually moves string offsets.** Total encoded length matches theirs on
+916 of 1,106 blocks, but every string start survives on only **142 of 1,106**: the same total is
+redistributed between symbols. To re-encode a block while freezing its offsets, build from the
+original's code **lengths** (`build_from_lengths`) rather than from frequencies.
+
+Bits per symbol over all 1,528 sub-blocks: originals **7.8061**, built trees **7.8055**. Phase 1's
+collapsed tree measured 1.06 on this basis, so it remains the degeneracy check.
 
 ### The suffix rule: which strings can be re-encoded
 
