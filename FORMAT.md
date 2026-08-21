@@ -514,16 +514,17 @@ Phase 5. What the decompressed content is remains UNKNOWN. It is not Huffman tex
 block's own tree, and the decompressed bytes are not a glyph bank indexed by the record table
 (section 11).
 
-**The tail record table is no longer unknown.** It is resolved in section 12. What remains
-unknown is the *second* referrer system: 293 text ids carry no tail record at all, and 5,947
-non-empty strings have no measured referrer from any source. Whatever addresses them, chiefly
-the large shared blocks 0x0020, 0x0021, 0x0023 and 0x0024, is not identified.
+**The tail record table is no longer unknown** (section 12), and neither is the direct-form
+referrer population (section 13). What remains unknown is how the last **4,992 non-empty
+strings** are addressed. They are not reached by either measured system.
 
-**The direct-form callers.** The lookup routine accepts an already-resolved
-`(text id << 20) | value` word, but no population of those words has been located. They are not
-in script data (section 11) and 15 of the 20 executable call sites build the argument at
-runtime. Five call sites pass compile-time constants whose top 12 bits are 0x48C and 0x48F,
-neither of which is a text id on this disc, where ids run 0x020 to 0x482. UNKNOWN.
+The evidence points at **ordinal addressing**, INFERRED and not confirmed: the wholly
+unreferenced blocks are index tables (0x0020 place names, 0x0026 person types, both starting
+with なし at index 0), and the scattered cases are families like 0x022B strings 0 to 4, five
+lines identical but for the party-member code. An ordinal computed at runtime leaves no bytes
+on the disc, which is consistent with every byte-level scan returning chance. The routine that
+walks a block to string N has not been located; it was not found among the 11 functions that
+touch the resident block table.
 
 **The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
 tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
@@ -737,6 +738,17 @@ An unbiased scan for *any* valid (offset, text id) u16 pair anywhere in the scri
 the corpus, is beaten by its own shuffled control: 220 hits in 200 real blocks against 569 in
 the same blocks shuffled. There is no dense pointer encoding of that shape to find.
 
+### The whole-executable scan for direct-form references is noise
+
+Testing every word-aligned u32 in SLPM_869.16 as `(text id << 20) | bit offset` gives 103 hits
+from 67,396 candidates, 0.15%. A shuffled control on the same bytes gives 104, 104 and 97. The
+scan is worthless on its own, and only 9 distinct string pairs come out of it, dominated by a
+single repeated value.
+
+The same test restricted to the tables the **code** names lands 51/51 and 162/162. The lesson is
+not that scanning fails, it is that scanning without a code-derived target fails. Phase 8 learned
+this on script data; the executable behaves identically.
+
 ### A round trip cannot see a wrong-but-consistent rendering
 
 The Phase 9 disassembler printed every I-type immediate signed. MIPS `ori`, `andi` and `xori`
@@ -883,3 +895,102 @@ Each of the 9,371 records names exactly one string, and no string is named twice
 non-empty strings have no referrer from this or any other measured system. The largest
 unreferenced concentrations are text ids 0x0021 (1,086), 0x0023 (576), 0x0020 (382), 0x0024
 (147) and 0x0124 (109).
+
+---
+
+## 13. The second referrer system, and the text-reference word
+
+MEASURED, Phase 11.
+
+### One resolver, two entry forms, one address word
+
+Every text path in the executable converges on `0x8008F280` (section 12). Only that routine and
+its own fall-through at `0x8008F354` treat the top 12 bits of a word as a text id; the other 67
+`srl rd,rs,20` sites in the image mask `0x000F` or `0x03FF` for unrelated fields. There is no
+second decoder and no second address format.
+
+A **text reference** is one 32-bit word, and its sign decides everything:
+
+| Sign | Meaning |
+|---|---|
+| negative (`0x8xxxxxxx`) | a raw Shift-JIS pointer into RAM |
+| non-negative, top 12 bits `0xFFF` | `0xFFF00000 \| key`, resolved through a block's tail table |
+| non-negative, otherwise | `(text id << 20) \| bit offset from the block base` |
+
+The dispatch is exact rather than heuristic. The packed result puts `bitpos` (0 to 7) in bits 28
+to 31, so bit 31 is always clear, while every PSX RAM pointer has it set. `0x8008F3BC` is the
+character cursor that dispatches on it: `bgez t1` selects the Shift-JIS path, otherwise the
+packed path.
+
+### Where direct-form words live
+
+| Source | Population | Verified |
+|---|---|---|
+| **type 26 sub-blocks** | 573 sub-blocks, 454 distinct by content, 60 to 2,820 bytes | 1,313 / 3,022 land on a string start, 43.45% (gate 30) |
+| static executable tables | e.g. `0x800A9FA0` stride 48 fields +20/+24; `0x80019CE4` stride 16 field +8 | 51/51 and 162/162, 100.00% (gates 28, 29) |
+| compile-time immediates | 5 resolver call sites, `lui`+`ori` | reference block 0x48C |
+
+Type 26 layout is a bare array of 32-bit words, **4-byte field, 4-byte aligned, no header and no
+count**. The caller supplies the index and the stride belongs to whatever record it is walking.
+References spread across 271 distinct text ids.
+
+Gate and companions for type 26:
+
+| Test | Result |
+|---|---:|
+| on a string start | **1,313 / 3,022, 43.45%** |
+| plus 1 bit | 0 / 3,022, 0.00% |
+| minus 1 bit | 0 / 3,022, 0.00% |
+| landing region | 100.00% in `[c, e)` |
+| out of bounds | 0.0000% |
+| shuffled control, 3 trials | 0.49%, 0.29%, 0.25% |
+
+### Text blocks embedded in the executable
+
+Two text blocks live in SLPM_869.16 rather than the archive, which is why their ids are absent
+from the archive-derived corpus:
+
+| VA | a | id | c | e | strings |
+|---|---:|---|---:|---:|---:|
+| `0x800AF1C8` | 6796 | 0x48C | 24 | 5464 | 779 |
+| `0x800B0C5C` | 192 | 0x48D | 24 | 0 | 0 |
+
+They parse with the ordinary six-int header and decode with the ordinary dual-base tree. 1,202
+words in the executable reference block 0x48C, covering 591 of its 779 strings. Find them by
+scanning the image for a six-int header with `c == 24`; exactly two match.
+
+### The dialogue entry point
+
+`0x8008687C(type, reference, flags)` is the central dialogue routine. It holds the reference in
+`s4`, resolves it, and stores the packed result into the window struct:
+
+```
+0x80086A8C  jal   0x8008F280
+0x80086A90  addu  a0,s4,zero      ; delay slot
+0x80086A94  sw    v0,88(s0)       ; s0 = 0x800F4DE8, so this is 0x800F4E40
+```
+
+`0x8008EB80` is the thin NPC wrapper over it (`a0` forwarded as `a1`, window type 72), and
+`0x8008FD78` is `copy_text_ref_to_buffer(dest, ref)`.
+
+### Coverage and the per-block consequence
+
+| System | strings referenced |
+|---|---:|
+| tail record tables (section 12) | 9,371 |
+| type 26 sub-blocks | 955 |
+| overlap | **0** |
+| union | **10,326** of 15,318 non-empty, 67.41% |
+
+Because bit offsets are absolute from the block base, changing one string's encoded length
+shifts every later string in its block. A block is therefore only accountable if **every** string
+in it has a known referrer:
+
+| Basis | Blocks | All referenced | At least one missing |
+|---|---:|---:|---:|
+| all strings, excluding 181 dummy blocks | 925 | 254 | 671 |
+| **non-empty only, excluding dummy blocks** | **925** | **264** | **661** |
+
+**264 of 925** is the operative figure, against a per-string 67.41%. Measuring coverage per
+string overstates the position by more than a factor of two, because the unreferenced strings are
+spread thinly across many blocks rather than concentrated in a few.

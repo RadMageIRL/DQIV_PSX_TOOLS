@@ -17,6 +17,8 @@ import argparse
 import collections
 import hashlib
 import os
+import random
+import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -348,9 +350,110 @@ def main():
                  "%d logical, %d signed; %d arithmetic, %d negative"
                  % (len(logical), bad, len(arith), negs),
                  "0 signed logical, arithmetic still shows negatives")
+        # 28  text blocks embedded in the executable, found by header shape alone
+        found = []
+        for o in range(0, tsize - 24, 4):
+            w = struct.unpack_from("<6I", exe, toff + o)
+            a, bid, c, _d, e, _f6 = w
+            if c != 24 or not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+                continue
+            if e and not (24 < e <= a):
+                continue
+            if toff + o + a > len(exe):
+                continue
+            found.append((load + o, bid, a, e))
+        rep.gate(28, "text blocks embedded in the executable",
+                 [(v, b) for v, b, _a, _e in found]
+                 == [(0x800AF1C8, 0x48C), (0x800B0C5C, 0x48D)],
+                 ", ".join("0x%08X id 0x%03X" % (v, b) for v, b, _a, _e in found) or "none",
+                 "0x800AF1C8 id 0x48C, 0x800B0C5C id 0x48D")
+
+        # 29  COMPANION to 28. The block is only real if references resolve INTO it.
+        # Two static tables the disassembly names must land on its string starts, and a
+        # one-bit shift must destroy that. Without this, gate 28 only proves six integers
+        # happened to look like a header.
+        blk = textblock.TextBlock(exe[toff + (0x800AF1C8 - load):
+                                      toff + (0x800AF1C8 - load) + 6796 + 4])
+        starts = huffman.string_starts(blk)
+        def _tbl(base, stride, fields):
+            out = []
+            for i in range(4096):
+                vs = []
+                for f in fields:
+                    off = toff + (base + stride * i + f - load)
+                    vs.append(struct.unpack_from("<I", exe, off)[0])
+                if (vs[0] >> 20) != 0x48C:
+                    break
+                out += [v & 0xFFFFF for v in vs if (v >> 20) == 0x48C]
+            return out
+        refs = _tbl(0x800A9FA0, 48, (20, 24)) + _tbl(0x80019CE4, 16, (8,))
+        c8 = blk.c * 8
+        hit = sum(1 for v in refs if (v - c8) in starts)
+        off1 = sum(1 for v in refs if (v - c8 + 1) in starts)
+        rep.gate(29, "executable tables resolve into it  (COMPANION)",
+                 len(refs) == 213 and hit == len(refs) and off1 == 0,
+                 "%d refs, %d on a string start, %d at +1 bit" % (len(refs), hit, off1),
+                 "213 refs, all on a string start, 0 at +1 bit")
     else:
-        for g in (23, 24, 25, 26, 27):
+        for g in (23, 24, 25, 26, 27, 28, 29):
             print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
+
+    # 30  the type 26 referrer system, with its own shuffled control.
+    # Scoped to the 30 most-referenced text ids so it stays cheap; the point is the
+    # separation from the control, not the absolute count.
+    t26 = [sb for _s, sb in hbd.sub_blocks(blocks) if sb["type"] == 26]
+    bufs = []
+    seen_c = set()
+    for sb in t26:
+        raw = hbd.sub_bytes(arch, sb)
+        if sb["flags"] == hbd.FLAG_LZS:
+            try:
+                raw = lzs.decompress(raw, sb["ulen"])
+            except Exception:
+                continue
+        if raw not in seen_c:
+            seen_c.add(raw)
+            bufs.append(raw)
+    cand = collections.Counter()
+    for b in bufs:
+        for k in range(0, len(b) - 3, 4):
+            w = struct.unpack_from("<I", b, k)[0]
+            cand[w >> 20] += 1
+    tb_by_id = {}
+    for _s, sb in hbd.text_sub_blocks(blocks):
+        tb = textblock.TextBlock(hbd.sub_bytes(arch, sb))
+        tb_by_id.setdefault(tb.id, tb)
+    # every valid text id the data actually names, not a top-N slice: a slice by
+    # candidate volume is dominated by ids that appear only by chance and drags the
+    # measured rate away from the population figure.
+    want = [i for i in cand if i in tb_by_id]
+    starts = {i: huffman.string_starts(tb_by_id[i]) for i in want}
+    wantset = set(want)
+
+    def _t26(bs):
+        tot = hit = 0
+        for b in bs:
+            for k in range(0, len(b) - 3, 4):
+                w = struct.unpack_from("<I", b, k)[0]
+                i = w >> 20
+                if i not in wantset:
+                    continue
+                tot += 1
+                if ((w & 0xFFFFF) - tb_by_id[i].c * 8) in starts[i]:
+                    hit += 1
+        return tot, hit
+
+    tot26, hit26 = _t26(bufs)
+    rnd = random.Random(9)
+    ctrl = [bytes(sorted(b, key=lambda _c: rnd.random())) for b in bufs]
+    ctot, chit = _t26(ctrl)
+    real_rate = 100.0 * hit26 / max(1, tot26)
+    ctrl_rate = 100.0 * chit / max(1, ctot)
+    rep.gate(30, "type 26 is a referrer system  (COMPANION)",
+             real_rate > 35.0 and ctrl_rate < 3.0 and real_rate > 20 * ctrl_rate,
+             "real %.2f%% (%d/%d), shuffled %.2f%% (%d/%d)"
+             % (real_rate, hit26, tot26, ctrl_rate, chit, ctot),
+             "real > 35%, shuffled < 3%, real at least 20x control")
 
     # 22  corpus roll-up
     if args.corpus_out:
