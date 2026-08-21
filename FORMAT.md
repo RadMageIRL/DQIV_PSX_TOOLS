@@ -537,6 +537,43 @@ No ordinal walker exists among the decoder's callers. The only counted terminato
 `0x8008FCAC`, which returns a **character** count for display width and stops at the first
 terminator.
 
+## 9b. Raw sector format, EDC and ECC
+
+MEASURED, Phase 16. Verified by regenerating and comparing against the original mastering.
+
+The disc is 156,487 raw sectors of 2352 bytes, all Mode 2. **Exactly 4 are Form 2**, at LBA 12 to
+15 in the system area; everything else including the whole archive (LBA 362 to 156,336) is Form 1.
+
+| Range | Mode 2 Form 1 | Mode 2 Form 2 |
+|---|---|---|
+| `0..12` | sync | sync |
+| `12..16` | header: min, sec, frame, mode | same |
+| `16..24` | subheader, 4 bytes twice | same |
+| `24..` | 2048 bytes user data | 2324 bytes user data |
+| EDC | `[2072, 2076)`, over `[16, 2072)` | `[2348, 2352)`, over `[16, 2348)`, **optional** |
+| P parity | `[2076, 2248)`, 172 bytes | none |
+| Q parity | `[2248, 2352)`, 104 bytes | none |
+
+EDC is a CRC-32, polynomial `0x8001801B` reflected, init 0, no final xor. ECC is Reed-Solomon over
+GF(2^8) with primitive polynomial `0x11D`, computed with **the 4 header bytes treated as zero**,
+which is what makes Mode 2 ECC independent of sector address.
+
+Two details that are easy to get wrong and were:
+
+* **P must be in place before Q is computed.** The Q pass indexes up to `52 * 43 = 2236` bytes from
+  `sector+12`, which runs past the 2064 bytes of data into the P parity at 2076. Computing Q over a
+  2064-byte buffer is an out-of-range read, not a subtly wrong answer.
+* **A zero Form 2 EDC means disabled and must be left alone.** Rewriting it changes bytes the
+  mastering deliberately left clear.
+
+`dq4/edcecc.py` reproduces the original mastering **byte for byte on every sector tested**: 2,993
+sampled Form 1, all 4 Form 2, and all 155,975 archive sectors during the Phase 16 null build. So
+regenerating EDC/ECC over unchanged data is a no-op on this disc, and any byte difference after a
+rebuild is a real content difference rather than a parity artifact.
+
+`dq4/discbuild.py` writes a file back into a copy of the image, same size and in place only. The
+source is opened read-only and never written.
+
 ## 10. Unknowns
 
 The edges are part of the map. None of these is claimed to be understood.
