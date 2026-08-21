@@ -38,6 +38,7 @@ MULDIV = {"mult", "multu", "div", "divu"}
 
 REGIMM = {0x00: "bltz", 0x01: "bgez", 0x10: "bltzal", 0x11: "bgezal"}
 
+LOGICAL_IMM = frozenset((0x0C, 0x0D, 0x0E))
 IMM = {0x08: "addi", 0x09: "addiu", 0x0A: "slti", 0x0B: "sltiu",
        0x0C: "andi", 0x0D: "ori", 0x0E: "xori"}
 LOAD = {0x20: "lb", 0x21: "lh", 0x22: "lwl", 0x23: "lw",
@@ -112,6 +113,11 @@ def dis(w, addr=0):
         return "%s %s,0x%08X" % (BRANCH1[op], REG[rs],
                                  (addr + 4 + (_s16(imm) << 2)) & 0xFFFFFFFF)
     if op in IMM:
+        # andi/ori/xori zero-extend their immediate; the arithmetic and set-less-than
+        # forms sign-extend it. Printing a logical immediate signed is wrong for a reader
+        # even though it reassembles, so the two families are formatted differently.
+        if op in LOGICAL_IMM:
+            return "%s %s,%s,0x%04X" % (IMM[op], REG[rt], REG[rs], imm)
         return "%s %s,%s,%d" % (IMM[op], REG[rt], REG[rs], _s16(imm))
     if op == 0x0F:
         if rs: return None
@@ -186,7 +192,7 @@ def asm(text, addr=0):
         return (b1inv[name] << 26) | (r(args[0]) << 21) | off
     iinv = {v: k for k, v in IMM.items()}
     if name in iinv:
-        return (iinv[name] << 26) | (r(args[1]) << 21) | (r(args[0]) << 16) | (int(args[2]) & 0xFFFF)
+        return (iinv[name] << 26) | (r(args[1]) << 21) | (r(args[0]) << 16) | (int(args[2], 0) & 0xFFFF)
     if name == "lui":
         return (0x0F << 26) | (r(args[0]) << 16) | int(args[1], 16)
     linv = {v: k for k, v in LOAD.items()}

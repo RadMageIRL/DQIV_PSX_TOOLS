@@ -184,7 +184,7 @@ Every boundary is derived from the header. The map closes with no gap. MEASURED,
 | `[base, d)` | tree pair array, 16 bits per entry |
 | `[d, a)` | record table and an undecoded region (section 10) |
 | `[a, a+4)` | self pointer, value equals `a` |
-| `[a+4, len)` | tail: zero, or a count plus records in 855 blocks (section 10) |
+| `[a+4, len)` | tail: zero, or a count plus records in 855 blocks (section 12) |
 
 `base` equals `e + 10` in all 1,528 blocks. MEASURED, Phase 2.
 
@@ -514,28 +514,16 @@ Phase 5. What the decompressed content is remains UNKNOWN. It is not Huffman tex
 block's own tree, and the decompressed bytes are not a glyph bank indexed by the record table
 (section 11).
 
-**The tail record table.** 855 of 1,528 text sub-blocks carry a u32 count followed by that
-many 8-byte records after the self pointer. Deduplicated by text id that is **9,371 records
-across 813 text ids**; the 12,870 figure counts duplicate copies of the same id.
+**The tail record table is no longer unknown.** It is resolved in section 12. What remains
+unknown is the *second* referrer system: 293 text ids carry no tail record at all, and 5,947
+non-empty strings have no measured referrer from any source. Whatever addresses them, chiefly
+the large shared blocks 0x0020, 0x0021, 0x0023 and 0x0024, is not identified.
 
-Field structure is fully measured (MEASURED, Phase 8), semantics are not:
-
-  * first u32  = `0xFFF00000 | key`, high 12 bits are 0xFFF on all 9,371 records, and the key
-    increments by exactly 1 between consecutive records in 8,005 of 9,370 pairs
-  * second u32 = `(own text id << 20) | value`, high 12 bits equal the block's own text id on
-    all 9,371
-
-The `value` field is **not** a bit offset into the block's Huffman stream. Tested against the
-corpus, it lands on a string start 0.51% of the time and on any symbol boundary 15.8% of the
-time, against a random baseline of 15.9%. Semantics UNKNOWN.
-
-The 0xFFF sentinel matches the `FFF0` in the documented `C021A0 <FFF0> <key>` lookup command.
-**The engine code confirms the sentinel and the table are the same mechanism.** The routine at
-0x8008F280 is the only site in the executable that shifts a value right by 20 and compares it
-against 4095; on a match it walks the resident struct table, reads header word 0 (`a`), rounds
-it up to a multiple of 4, and adds it to the block base, which is exactly where the tail
-records live. MEASURED, Phase 9. What the routine returns, and therefore what the `key` selects,
-was located but not followed: UNKNOWN.
+**The direct-form callers.** The lookup routine accepts an already-resolved
+`(text id << 20) | value` word, but no population of those words has been located. They are not
+in script data (section 11) and 15 of the 20 executable call sites build the argument at
+runtime. Five call sites pass compile-time constants whose top 12 bits are 0x48C and 0x48F,
+neither of which is a text id on this disc, where ids run 0x020 to 0x482. UNKNOWN.
 
 **The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
 tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
@@ -706,19 +694,32 @@ the Japanese one. Their byte diff is 24,367 separate runs with a largest contigu
 of 1,781 bytes, which is a version revision rather than a resource present in one and absent
 from the other.
 
-### The tail record values are not bit offsets
+### CORRECTED: the tail record values are bit offsets, measured from the wrong origin
 
-The obvious reading of the tail table's second u32, `(text id << 20) | bit offset`, matching
-the sector table's packing, does not survive contact with the corpus. The values are the right
-*magnitude*: divided by the block's code-stream bit length they run median 0.598 with 97.4% at
-or below 1.0. They are still not offsets.
+Phase 8 recorded this as a negative result. It was a correct measurement of the wrong
+hypothesis, and it is corrected here rather than deleted, because the failure mode is worth
+keeping.
 
-| Test | on a symbol boundary |
+The reading tested was `value` as a bit offset **from `c`**, the start of the code stream. It
+landed on a string start 0.51% of the time and on any symbol boundary 15.8% of the time against
+a 15.9% random baseline, so it was rejected.
+
+The engine measures the same field **from the block base** (section 12). Every block on this
+disc has `c = 24`, so the tested frame was displaced by a constant `24 * 8 = 192` bits. A fixed
+displacement into a Huffman stream lands at an arbitrary interior bit, which is exactly what a
+random baseline looks like. Corrected:
+
+| Reading | lands on a string start |
 |---|---:|
-| value as a bit offset | 15.8% |
-| **random offsets, same blocks** | **15.9%** |
+| bit offset from `c` | 48 / 9,371, 0.51% |
+| **bit offset from the block base** | **9,371 / 9,371, 100.00%** |
+| same, +1 bit | 0 / 9,371 |
+| same, -1 bit | 0 / 9,371 |
 
-Matching a random baseline to within 0.1 points is the end of that hypothesis.
+**The lesson: a null result rejects the hypothesis you tested, not the family it belongs to.**
+The magnitude evidence that made the field look like an offset was right all along. Only the
+zero point was wrong, and no amount of additional companion testing on the wrong frame would
+have found that. The code did.
 
 ### C0 21 A0 is not a three-byte opcode
 
@@ -735,6 +736,23 @@ always a valid string start.
 An unbiased scan for *any* valid (offset, text id) u16 pair anywhere in the scripts, gated on
 the corpus, is beaten by its own shuffled control: 220 hits in 200 real blocks against 569 in
 the same blocks shuffled. There is no dense pointer encoding of that shape to find.
+
+### A round trip cannot see a wrong-but-consistent rendering
+
+The Phase 9 disassembler printed every I-type immediate signed. MIPS `ori`, `andi` and `xori`
+zero-extend theirs, so `ori a0,a0,0xA8A7` rendered as `ori a0,a0,-22361` and reading it back
+gave a constant 0xFFFF too low.
+
+Gate 23 is a decode/reassemble round trip over all 152,367 executable words, and it passed at
+100.0000% throughout, because `asm()` parsed the same signed text back to the identical
+encoding. The error was invisible to the instrument by construction: both halves agreed on a
+convention that was wrong.
+
+This is the same shape as the Phase 1 collapsed Huffman tree, which round tripped 1,527 of
+1,528 blocks byte-exactly while decoding at 1.06 bits per symbol. **A round trip proves two
+implementations agree, never that either is right.** Gate 27 now checks the rendered text
+directly, and requires that arithmetic immediates still print negative so it cannot be
+satisfied by making everything unsigned.
 
 ### The MIPS false-positive trap
 
@@ -755,3 +773,113 @@ The fixed `....#.##` and `....#.#.` right column is a register field, not a glyp
 independent detectors, vertical stroke continuity and a fixed-cell glyph-table scan, both
 ranked this region top. Neither ink density nor row correlation distinguishes MIPS from a
 font. Render before believing.
+
+---
+
+## 12. The tail record table and the lookup routine
+
+MEASURED, Phase 10. 855 of 1,528 text sub-blocks carry a tail table. Deduplicated by text id
+that is **9,371 records across 813 text ids**; the 12,870 figure counts duplicate copies of the
+same id.
+
+### Layout
+
+Starting at `a` rounded up to a multiple of 4:
+
+| Offset | Size | Meaning |
+|---|---|---|
+| `round_up_4(a)` | 4 | self pointer, must equal `a`, used as a validity check |
+| `+4` | 4 | record count |
+| `+8` | 8 each | the records |
+
+### Record fields
+
+| Field | Packing | Verified on |
+|---|---|---|
+| first u32 | `0xFFF00000 \| key` | 9,371 of 9,371 |
+| second u32 | `(own text id << 20) \| value` | 9,371 of 9,371 |
+
+`value` is a **bit offset from the block base**, not from `c`. Byte address is
+`block + (value >> 3)`; the bit within that byte is `value & 7`. Expressed in the code stream's
+own frame the offset is `value - c * 8`.
+
+Gated against the corpus, every record resolves to the first bit of an END-terminated string:
+
+| Reading | lands on a string start |
+|---|---:|
+| **bit offset from the block base** | **9,371 / 9,371, 100.00%** |
+| same, +1 bit (companion) | 0 / 9,371 |
+| same, -1 bit (companion) | 0 / 9,371 |
+| bit offset from `c` (the Phase 8 reading, section 11) | 48 / 9,371, 0.51% |
+
+All 9,371 land inside `[c, e)`. Out of bounds rate is 0.0000%.
+
+### The key is a slot identifier
+
+The key is a global name for a *role* in the script, not for a string. It repeats across
+blocks, and where it repeats the blocks almost always agree on the text:
+
+| Metric | Value |
+|---|---:|
+| distinct keys | 5,722 |
+| keys used by more than one text id | 858 |
+| records under a shared key | 4,507 |
+| shared keys where every block decodes the same string | **853** |
+| shared keys where the blocks disagree | 5 |
+
+The five exceptions are the slots whose content is meant to vary per block: item appraisal
+(`01652`, 163 blocks, 162 distinct strings), tarot readings (`01659`, 48 and 48), equip
+reactions (`01649`, 83 and 17), and two two-way variants (`01648`, `01654`).
+
+The "keys increment by 1" statistic from Phase 8 is **ordering-dependent and should not be
+relied on**. Counting non-incrementing transitions over the same 9,371 records:
+
+| Record order | non-incrementing |
+|---|---:|
+| natural scan order | 1,150 |
+| sorted by (text id, record index) | 949 |
+| sorted by key | 3,649 |
+
+Phase 8 published 1,365, which none of these reproduces. The figure is not load bearing for
+anything and is superseded: the key is a global slot identifier, so adjacency within one
+block's table is not the frame the numbering lives in. In natural scan order 597 of the 1,150
+non-incrementing transitions are the first record of a new block; the rest are blocks skipping
+slots they do not use.
+
+### The lookup routine at 0x8008F280
+
+Two entry forms sharing one exit.
+
+| `a0 >> 20` | Meaning |
+|---|---|
+| `0xFFF` | `a0 & 0xFFFFF` is a key. Locate the resident block, walk its tail table, linear scan for a record whose first u32 equals `a0`. On a match load the second u32 into `a0` and fall through. On no match return 0. |
+| anything else | `a0` is already a resolved reference, `(text id << 20) \| value`. |
+
+The resolver finds the block by linear scan over the struct table at `0x80100168`, comparing
+`block+4` against the text id, then branches on `e` at `block+16`:
+
+* `e != 0`, the Huffman case: returns `[bitpos:4][slot:4][addr:24]` where `addr` is
+  `(block + (value >> 3)) & 0x00FFFFFF` and `bitpos` is `value & 7`. This is the exact form the
+  decoder at `0x8008F3BC` consumes.
+* `e == 0`: returns `block + value` as a plain byte address.
+
+20 call sites reach the routine. 9 load `a0` from memory, 5 copy it from another register, 5
+pass a compile-time constant and 1 takes it from a branch comparison. **Read the delay slot**:
+the instruction after the `jal` executes before the call and frequently overwrites `a0`.
+
+Because 15 of 20 sites build the key at runtime, the single `C021A0 <FFF0> <key>` occurrence
+found in script data is consistent with this design rather than evidence of a missed encoding.
+
+### Coverage
+
+Each of the 9,371 records names exactly one string, and no string is named twice.
+
+| Basis | Total | Referenced |
+|---|---:|---:|
+| all corpus strings | 17,234 | 9,371, 54.38% |
+| **non-empty strings** | **15,318** | **9,371, 61.18%** |
+
+0 records point at trailing residue. 293 text ids have no referenced string at all, and 5,947
+non-empty strings have no referrer from this or any other measured system. The largest
+unreferenced concentrations are text ids 0x0021 (1,086), 0x0023 (576), 0x0020 (382), 0x0024
+(147) and 0x0124 (109).

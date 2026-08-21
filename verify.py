@@ -334,8 +334,22 @@ def main():
         rep.gate(26, "jal targets are function starts", frac >= 80.0,
                  "%d targets in text, %.1f%% after 'jr ra'" % (len(intext), frac),
                  ">= 80% preceded by 'jr ra'")
+        # 27  COMPANION to gate 23. A round trip cannot see a wrong-but-consistent
+        # rendering: ori/andi/xori zero-extend, and printing those immediates signed
+        # reassembles perfectly while misleading every human reader. Gate on the text.
+        logical = [w for w in wmap.values() if (w >> 26) in (0x0C, 0x0D, 0x0E)]
+        shown = [mips.dis(w, 0) for w in logical]
+        bad = sum(1 for t in shown if t and t.rsplit(",", 1)[1].startswith("-"))
+        arith = [w for w in wmap.values() if (w >> 26) in (0x08, 0x09)]
+        negs = sum(1 for w in arith
+                   if (mips.dis(w, 0) or ",0").rsplit(",", 1)[1].startswith("-"))
+        rep.gate(27, "logical immediates render unsigned  (COMPANION)",
+                 bad == 0 and negs > 0,
+                 "%d logical, %d signed; %d arithmetic, %d negative"
+                 % (len(logical), bad, len(arith), negs),
+                 "0 signed logical, arithmetic still shows negatives")
     else:
-        for g in (23, 24, 25, 26):
+        for g in (23, 24, 25, 26, 27):
             print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
 
     # 22  corpus roll-up
