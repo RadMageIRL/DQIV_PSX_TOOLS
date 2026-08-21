@@ -4,9 +4,16 @@ A read-only Python library for reading Dragon Quest IV on the PlayStation
 (SLPM-86916): its archive container, its compressed text, its Huffman trees, its
 phrase dictionaries, its sector table and its glyph atlas.
 
-stdlib only. No dependencies. Nothing here writes to a disc image.
+stdlib only. No dependencies. Reading is the bulk of it; there is also a build path
+that writes a modified copy of a disc image, and it never writes to the source.
 
 **No game data ships here.** You supply your own disc image.
+
+The pipeline is demonstrated, not only gated. A disc rebuilt by this library from an
+unmodified archive is byte-identical to its source, and boots. A disc carrying a
+Huffman tree built by this library, replacing the one the game shipped, also boots and
+renders its scene correctly under DuckStation. Both were checked on real hardware
+emulation, not only against the gates.
 
 ## What this is for
 
@@ -47,10 +54,15 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Twenty two gates cover the disc hash, the block scan, the sub-block census, the text
-header invariants, a known-good decode, a byte-exact round trip, the dictionary, the
-sector table, the control code census, the atlas geometry, LZS decompression, the
-STR video band and the corpus roll-up hash.
+Thirty four gates cover source and output integrity, the block scan, the sub-block
+census, the text header invariants, a known-good decode, a byte-exact round trip, the
+dictionary, the sector table, the control code census, the atlas geometry, LZS
+decompression, the STR video band, a MIPS disassembler round trip, the four referrer
+systems, the bit budget, per-string editability and the corpus roll-up hash.
+
+Gate 1 asks whether the image is the pinned source disc. On a disc this library built
+the answer is legitimately no, so it prints as a note rather than a verdict and gate 1b
+carries the structural check. A modified disc still has an all-pass target.
 
 Two of them, gates 9 and 10, exist because of a specific failure. A decoder that had
 collapsed to a two-leaf tree passed the byte-exact round trip on 1,527 of 1,528 blocks,

@@ -50,8 +50,17 @@ class Report:
 
     def gate(self, n, name, ok, measured, expected):
         self.rows.append((n, name, bool(ok), measured, expected))
-        print("  %-4s gate %-2d  %-46s measured %-28s expected %s"
+        print("  %-4s gate %-3s %-46s measured %-28s expected %s"
               % ("PASS" if ok else "FAIL", n, name, measured, expected))
+
+    def note(self, n, name, measured):
+        """Informational, never counted toward the pass total.
+
+        Used where the honest answer is a fact rather than a verdict: gate 1
+        asks whether this is the pinned source disc, and for a build the answer
+        is legitimately no.
+        """
+        print("  NOTE gate %-2s  %-46s measured %s" % (n, name, measured))
 
     def summary(self):
         bad = [r for r in self.rows if not r[2]]
@@ -59,7 +68,7 @@ class Report:
         if bad:
             print("FAILED:")
             for n, name, _, m, e in bad:
-                print("   gate %d %s: measured %s, expected %s" % (n, name, m, e))
+                print("   gate %s %s: measured %s, expected %s" % (n, name, m, e))
         return not bad
 
 
@@ -91,10 +100,31 @@ def main():
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     sha = h.hexdigest()
-    rep.gate(1, "archive size and disc SHA-256",
-             size == Q41_SIZE and sha == DISC_SHA256,
-             "%d bytes, %s" % (size, sha[:16] + "..."),
-             "%d bytes, %s" % (Q41_SIZE, DISC_SHA256[:16] + "..."))
+    # Gate 1 asks "is this the pinned source disc". For a build the answer is
+    # legitimately no, and a gate that fails by construction on every modified
+    # disc stops being read. So gate 1 only renders a verdict on the source; on
+    # any other image it becomes a NOTE and gate 1b carries the structural work.
+    is_source = (sha == DISC_SHA256)
+    if is_source:
+        rep.gate(1, "source integrity: pinned disc SHA-256", True,
+                 sha[:16] + "...", DISC_SHA256[:16] + "...")
+    else:
+        rep.note(1, "source integrity: NOT the pinned source disc",
+                 "%s... (source is %s...)" % (sha[:16], DISC_SHA256[:16]))
+
+    # 1b  output integrity, which every image must satisfy including builds:
+    # ISO9660 parses, the three files are present, the archive extracts to the
+    # size the directory entry records.
+    with isomod.RawISO(args.dq4) as _d:
+        _files = {n.split(";")[0].lstrip("/"): (l, sz) for n, l, sz, _t in _d.files()}
+    ok1b = (sorted(_files) == ["HBD1PS1D.Q41", "SLPM_869.16", "SYSTEM.CNF"]
+            and _files["HBD1PS1D.Q41"] == (362, Q41_SIZE)
+            and len(arch) == Q41_SIZE
+            and os.path.getsize(args.dq4) % 2352 == 0)
+    rep.gate("1b", "output integrity: ISO parses, archive extracts", ok1b,
+             "%d files, archive %d bytes at lba %d"
+             % (len(_files), len(arch), _files.get("HBD1PS1D.Q41", (0, 0))[0]),
+             "3 files, archive %d bytes at lba 362" % Q41_SIZE)
 
     # 2
     blocks = hbd.scan_blocks(arch)

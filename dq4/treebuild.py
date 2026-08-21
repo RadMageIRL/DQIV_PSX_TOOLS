@@ -56,16 +56,31 @@ def descriptor(kind, value):
     raise ValueError("unknown symbol kind %r" % (kind,))
 
 
-def build(freqs):
+def build(freqs, min_depth=2):
     """(pairs, m, root) from {(kind, value): count}.
 
     Tie-breaking is deterministic: equal weights order by the symbol's sorted
     position, so the same frequencies always produce the same tree. Heart Beat's
     tie-breaking is implementation-defined and is not reproduced.
+
+    min_depth=2 by default, because Heart Beat's encoder never emits a one-bit
+    code: their minimum leaf depth is 2 to 5 on all 1,106 blocks, and Phase 1
+    rejected a depth-1 candidate from structure alone (MEASURED, Phase 17).
+
+    Constraining every length to at least 2 is the same problem as packing the
+    symbols under a root with FOUR slots, since sum 2^-(L-2) = 4. So the
+    constrained optimum is reached by running ordinary Huffman merges until
+    exactly four items remain and hanging those at depth 2. Pairing among the
+    four does not affect cost; all four sit at the same depth.
     """
     syms = sorted(freqs)
     if len(syms) < 2:
         raise ValueError("a tree needs at least two distinct symbols, got %d"
+                         % len(syms))
+    if min_depth not in (1, 2):
+        raise ValueError("min_depth must be 1 or 2, got %r" % (min_depth,))
+    if min_depth == 2 and len(syms) < 4:
+        raise ValueError("min depth 2 needs at least 4 distinct symbols, got %d"
                          % len(syms))
     # heap entries: (weight, tag, payload) where payload is ("L", sym) or
     # ("N", node number). tag makes ordering total and therefore deterministic.
@@ -74,13 +89,25 @@ def build(freqs):
         heapq.heappush(heap, (freqs[s], i, ("L", s)))
     children = []           # children[nn] = (side0 payload, side1 payload)
     tag = len(syms)
-    while len(heap) > 1:
+    stop = 4 if (min_depth == 2 and len(syms) >= 4) else 1
+    while len(heap) > stop:
         w0, _t0, p0 = heapq.heappop(heap)
         w1, _t1, p1 = heapq.heappop(heap)
         nn = len(children)
         children.append((p0, p1))
         heapq.heappush(heap, (w0 + w1, tag, ("N", nn)))
         tag += 1
+    if stop == 4:
+        # four items at depth 2: pair them, then join the pairs at the root
+        items = [heapq.heappop(heap) for _ in range(4)]
+        for a, b in ((0, 1), (2, 3)):
+            nn = len(children)
+            children.append((items[a][2], items[b][2]))
+            heapq.heappush(heap, (items[a][0] + items[b][0], tag, ("N", nn)))
+            tag += 1
+        w0, _t0, p0 = heapq.heappop(heap)
+        w1, _t1, p1 = heapq.heappop(heap)
+        children.append((p0, p1))
     m = len(children)
     root = m - 1
     n = 2 * m + 1

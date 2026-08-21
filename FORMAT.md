@@ -797,21 +797,31 @@ The magnitude evidence that made the field look like an offset was right all alo
 zero point was wrong, and no amount of additional companion testing on the wrong frame would
 have found that. The code did.
 
-### C0 21 A0 is not a three-byte opcode
+### RETRACTED: "C0 21 A0 is not a three-byte opcode"
 
-Type 39 scripts are **word-aligned u32 streams** with `0xA0` as the top byte of the command
-class. Searched as a three-byte pattern, `C0 21 A0` straddles a word boundary and matches
-92,681 times by chance, with near-uniform alignment residues. Word aligned, the real command
-is `0xA021C000`, occurring 15,207 times across the 927 distinct script blocks.
+**This negative result was wrong and is withdrawn.** It is left here rather than deleted so the
+mistake stays visible, but nothing in it should be relied on. The correct account is in section 14
+and gate 37.
 
-The documented `<u16 bit offset> <u16 text id>` argument does not verify against the corpus.
-Reading the following word either way gives 0.00% and 27.14%, and the 27% is an artifact:
-the word's median value is 14, so its high half is zero on most commands and offset 0 is
-always a valid string start.
+What Phase 12 recorded, and what was wrong with it:
 
-An unbiased scan for *any* valid (offset, text id) u16 pair anywhere in the scripts, gated on
-the corpus, is beaten by its own shuffled control: 220 hits in 200 real blocks against 569 in
-the same blocks shuffled. There is no dense pointer encoding of that shape to find.
+> Type 39 scripts are word-aligned u32 streams with `0xA0` as the top byte of the command class.
+> Searched as a three-byte pattern, `C0 21 A0` straddles a word boundary and matches 92,681 times
+> by chance. Word aligned, the real command is `0xA021C000`, occurring 15,207 times.
+
+15,207 is not the population. It is the quarter of the occurrences that happen to sit at offset 0
+mod 4; the same byte pattern occurs 15,207 / 6,737 / 4,515 / 10,735 times at offsets 0/1/2/3, a
+total of 37,194. The stream is byte-aligned, so forcing word alignment reads a quarter of it and
+classifies the remaining three quarters as noise.
+
+**`C0 21 A0` is a three-byte command, exactly as Mandy Wilkens published it.** Her documentation
+was correct as written; the error was entirely in this project's reading of it, and the earlier
+text should not be read as a correction to her work.
+
+The companion claim, that the argument is a `<u16 bit offset> <u16 text id>` pair, was also
+tested against the wrong shape. The argument is a single packed u32,
+`(text id << 20) | bit offset`, which is the same word the resolver at `0x8008F280` already
+accepts. Section 14 carries the gate.
 
 ### The whole-executable scan for direct-form references is noise
 
