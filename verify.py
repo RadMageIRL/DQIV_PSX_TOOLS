@@ -207,11 +207,19 @@ def main():
     # which decodes from bits that complete no further code.
     pieces = len(strings) + (1 if residue else 0)
     s10 = huffman.render(strings[10]) if len(strings) > 10 else "(missing)"
-    rep.gate(7, "text id 0x006C decode",
-             pieces == 12 and s10 == STRING_10,
-             "%d pieces (%d END-terminated + residue), [10] = %s"
-             % (pieces, len(strings), s10),
-             "12 pieces, [10] = %s" % STRING_10)
+    # Pinned to the unmodified decode, so any build that edits 0x006C fails it by
+    # construction. Same treatment as gate 1: a verdict on the source, a NOTE
+    # elsewhere, so a THIRD unexpected failure stays visible instead of hiding
+    # among expected ones.
+    if is_source:
+        rep.gate(7, "text id 0x006C decode",
+                 pieces == 12 and s10 == STRING_10,
+                 "%d pieces (%d END-terminated + residue), [10] = %s"
+                 % (pieces, len(strings), s10),
+                 "12 pieces, [10] = %s" % STRING_10)
+    else:
+        rep.note(7, "text id 0x006C decode: not the source disc",
+                 "%d pieces, [10] = %s" % (pieces, s10))
 
     # 8
     rep.gate(8, "byte-exact round trip", rt_ok == 1528, "%d / 1528" % rt_ok, "1528 / 1528")
@@ -622,8 +630,15 @@ def main():
     if args.corpus_out:
         built = corpusmod.build(args.dq4, args.corpus_out)
         roll = built["rollup"]
-        rep.gate(22, "corpus roll-up hash", roll == corpusmod.ROLLUP_EXPECTED,
-                 roll[:16] + "...", corpusmod.ROLLUP_EXPECTED[:16] + "...")
+        # Pinned to a corpus built from unmodified text, so ANY content build moves
+        # it. Verdict on the source, NOTE elsewhere, same reason as gate 7.
+        if is_source:
+            rep.gate(22, "corpus roll-up hash", roll == corpusmod.ROLLUP_EXPECTED,
+                     roll[:16] + "...", corpusmod.ROLLUP_EXPECTED[:16] + "...")
+        else:
+            rep.note(22, "corpus roll-up: not the source disc",
+                     "%s... (source is %s...)"
+                     % (roll[:16], corpusmod.ROLLUP_EXPECTED[:16]))
 
         # 33  the executable-resident subtree hashes separately, so a moved archive
         # roll-up still means exactly one thing.
@@ -640,27 +655,40 @@ def main():
         # chars_clean is the NON-DUMMY figure. Dummy-only blocks are trivially
         # CLEAN, and counting their 543 characters inflated the published total to
         # 139,735. Both numbers are asserted so neither basis can drift.
-        rep.gate(34, "per-block editability matches Phase 15  (COMPANION)",
-                 built["clean_nd"] == 673 and built["total_nd"] == 925
-                 and built["chars_clean"] == 491333
-                 and built["chars_clean_dummy"] == 543,
+        # The BLOCK counts are structural and hold on any content build, so they
+        # stay a verdict. The CHARACTER totals are pinned to unmodified text and
+        # a growth build moves them, so they are only asserted on the source.
+        # Build 2c moved them by exactly +9, the symbols it duplicated, which is
+        # how this split was found.
+        ok34 = built["clean_nd"] == 673 and built["total_nd"] == 925
+        if is_source:
+            ok34 = (ok34 and built["chars_clean"] == 491333
+                    and built["chars_clean_dummy"] == 543)
+        rep.gate(34, "per-block editability matches Phase 15  (COMPANION)", ok34,
                  "%d CLEAN of %d non-dummy blocks, %d chars CLEAN non-dummy"
                  " + %d in dummy-only blocks"
                  % (built["clean_nd"], built["total_nd"], built["chars_clean"],
                     built["chars_clean_dummy"]),
-                 "673 CLEAN of 925 non-dummy, 491333 chars + 543 dummy")
+                 "673 CLEAN of 925 non-dummy"
+                 + (", 491333 chars + 543 dummy" if is_source
+                    else ", character totals not pinned off-source"))
 
         # 36  the suffix rule. A string is editable exactly when no unresolved
         # string sits after it, so the editable set is the suffix from the last
         # unresolved index. Asserted because it is the operative figure and it is
         # derived from the referrer map rather than the lossy status column.
-        rep.gate(36, "suffix-rule editability, non-dummy blocks",
-                 built["ed_strings"][0] == 13891
-                 and built["ed_chars"][0] == 598364
-                 and built["ed_chars"][1] == 69540,
+        # Same split as gate 34: the STRING count is structural, the character
+        # totals are pinned to unmodified text.
+        ok36 = built["ed_strings"][0] == 13891
+        if is_source:
+            ok36 = (ok36 and built["ed_chars"][0] == 598364
+                    and built["ed_chars"][1] == 69540)
+        rep.gate(36, "suffix-rule editability, non-dummy blocks", ok36,
                  "%d editable strings, %d editable chars, %d frozen"
                  % (built["ed_strings"][0], built["ed_chars"][0], built["ed_chars"][1]),
-                 "13891 strings, 598364 chars editable, 69540 frozen")
+                 "13891 strings"
+                 + (", 598364 chars editable, 69540 frozen" if is_source
+                    else ", character totals not pinned off-source"))
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
 
