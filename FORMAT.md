@@ -339,7 +339,7 @@ is a strict subset: every one of her codes occurs. MEASURED, gate 16.
 |---|---|---|---|---|
 | 0x0000 | end of string, required terminator | | 0x7F2A | フレア |
 | 0x7F02 | new line plus tab | | 0x7F2B | ホイミン |
-| 0x7F04 | name decorator, starts named dialog | | 0x7F2C | オーリン |
+| 0x7F04 | name decorator, starts named dialog; see 15c | | 0x7F2C | オーリン |
 | 0x7F0A | blinking cursor | | 0x7F2D | ホフマン, not always |
 | 0x7F0B | end of line, opposite of 0x7F0A | | 0x7F2E | パノン |
 | 0x7F0C | end of line, in groups of about six | | 0x7F2F | ルーシア |
@@ -1581,6 +1581,67 @@ of 5,821 decompressed LZS sub-blocks; the six-u32 structural test over all 23,82
 finds no text block outside types 40 and 42; and the names are not stored as font descriptors
 either, with `スライム` as the control that confirms the search works. What remains untried is a
 non-LZS compression, a Huffman tree inside a type 46 overlay, and the 26,635-sector STR band.
+
+---
+
+## 15c. The message box, and what 0x7F04 does to it
+
+### Three lines, and the shipped script never exceeds it
+
+**A message box displays three lines. A fourth scrolls the first off the top, silently.**
+MEASURED on hardware 2026-08-21: a scene rebuilt with every box at three lines or fewer rendered
+all 29 boxes whole, and an earlier build of the same scene with eight boxes at four or five lines
+lost the first line of every one of them.
+
+**MEASURED across the shipped script: 100.00% of 24,169 boxes are three lines or fewer, with
+zero exceptions.**
+
+| lines | boxes | share |
+|---|---|---|
+| 1 | 3,750 | 15.52% |
+| 2 | 6,384 | 26.41% |
+| 3 | 14,035 | 58.07% |
+| 4 or more | **0** | |
+
+Counting this correctly needs one detail. A box ends at `0x7F0A` or `0x7F0B`, and the usual
+continuation sequence is `0x7F0A 0x7F02 0x7F04`. **The `0x7F02` in that sequence belongs to the
+terminator, not to the box that follows it**; counting it as a line break inflates every continued
+box by one and produces a small phantom population of four-line boxes. 8,152 of 8,157 continuation
+boxes carry exactly that one leading `0x7F02` and **no box in the game carries a second one**, so
+discounting it hides nothing.
+
+### 0x7F04 suppresses a prefix the data does not contain
+
+A box whose opening run of control codes does **not** contain `0x7F04` is drawn with a leading
+two-cell `＊「` that **the engine supplies and the text does not contain**. A box that does carry
+`0x7F04` is drawn without it.
+
+MEASURED on screen, text id 0x006C: strings 00 to 06 all open with `0x7F04` and none shows the
+prefix; strings 07 to 10 open without it and all four show it. The discriminating case is **string
+04, `シンシアは　モシャスをとなえた！！`, which carries `0x7F04` but has no speaker bracket and no
+name code at all, and still draws no prefix.** It renders twice in that scene.
+
+MEASURED across the shipped script:
+
+| | boxes | share |
+|---|---|---|
+| opening run contains `0x7F04` | 14,084 | 58.71% |
+| opening run does not | 9,904 | 41.29% |
+
+**This does not correct the published reading of `0x7F04` as a name decorator; it confirms it.**
+Of the 14,084 boxes that carry the code, **13,550 (96.21%) do supply a name**, 12,545 through a
+name control code inside the same opening run and 1,005 as literal text followed by `「`. Only 534
+carry no name, and those are narration lines where a name appears in prose without a bracket. What
+is recorded here is the rendering consequence rather than the purpose: the prefix is keyed on the
+code, and it stays suppressed even for the 534.
+
+**The practical consequence for anyone laying out text**: the usable width of a box is 20 cells
+with `0x7F04` and 18 without, because the prefix eats two.
+
+**A methodological warning, since this took three attempts.** `0x7F04` is normally followed inside
+the same opening run by the name code. A regex that consumes the whole leading control-code run
+before looking for a name therefore eats the name, and reports a population of nameless boxes that
+does not exist. Parse the opening run into a list of codes and look inside it.
 
 ---
 
