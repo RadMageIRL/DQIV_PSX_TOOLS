@@ -27,5 +27,11 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
-docs/
 build/
+
+# docs/ is ignored wholesale except the published screenshots, which are the only
+# binary assets this repo carries and are checked into docs/images/.
+docs/*
+!docs/images/
+docs/images/*
+!docs/images/*.png

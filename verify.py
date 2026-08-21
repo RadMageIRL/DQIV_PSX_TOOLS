@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dq4 import iso as isomod
-from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs
+from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs, fonts
 from dq4 import corpus as corpusmod
 from dq4 import mips, referrers
 
@@ -266,23 +266,61 @@ def main():
              "%d distinct, %d of hers missing" % (len(ctrl_counts), len(missing)),
              "43 distinct, 0 missing")
 
-    # 17
+    # 17  The atlas holds TWO glyphs per cell, one per 2-bit plane. This gate used
+    # to assert "13 Latin capitals" against a hand-made dict, which was reading the
+    # superposition of both planes and was wrong. It now resolves every letter and
+    # digit through the game's own font table and checks the named plane has ink.
     atlases = glyph.find_atlases(arch, blocks)
     big = [b for _, _, b in atlases if len(b) == 16128]
-    if big:
+    wanted = list(range(0x8260, 0x827A)) + list(range(0x8281, 0x829B)) \
+        + list(range(0x824F, 0x8259))
+    if big and exe:
         at = glyph.Atlas(big[0])
         nb = at.non_blank_count()
-        latin_ok = all(not at.is_blank(s) and at.extent(s)[1] == 3 and
-                       at.extent(s)[2] == 13 for s in glyph.DQ4_LATIN_SLOTS)
-        rep.gate(17, "glyph atlas slots and Latin capitals",
-                 at.slots == 288 and nb == 268 and latin_ok and
-                 len(glyph.DQ4_LATIN_SLOTS) == 13,
-                 "%d slots, %d non-blank, %d Latin"
-                 % (at.slots, nb, len(glyph.DQ4_LATIN_SLOTS)),
-                 "288 slots, 268 non-blank, 13 Latin")
+        _load, _pc, _tsz, _toff = mips.exe_mapping(exe)
+        _img = exe[_toff:_toff + _tsz]
+        tbl = fonts.table(_img, _load, fonts.FONT1)
+        drawn = 0
+        for code in wanted:
+            e = tbl.get(code)
+            if e is None:
+                continue
+            c, p = fonts.cell_plane(e.descriptor)
+            if at.plane_ink(c, p):
+                drawn += 1
+        rep.gate(17, "glyph atlas, two glyphs per cell, Latin and digits",
+                 at.slots == 288 and nb == 268 and drawn == 62,
+                 "%d slots, %d non-blank, %d of 62 letters and digits drawn"
+                 % (at.slots, nb, drawn),
+                 "288 slots, 268 non-blank, 62 of 62 drawn")
     else:
-        rep.gate(17, "glyph atlas slots and Latin capitals", False, "atlas not found",
-                 "288 slots, 268 non-blank, 13 Latin")
+        rep.gate(17, "glyph atlas, two glyphs per cell, Latin and digits", False,
+                 "atlas or executable not found",
+                 "288 slots, 268 non-blank, 62 of 62 drawn")
+
+    # 39  Sub-block alignment. Every sub-block in the shipped archive has a length
+    # that is a multiple of 4 and starts 4-byte aligned, 23,828 of 23,828. The
+    # engine reads the text block header with lw, so a misaligned block raises an
+    # Address Error. Four builds hung on exactly this while passing every other
+    # gate here, because every other gate was written from our own model of the
+    # format. This one is written from a property the shipped game exhibits.
+    # It is an invariant, not a pinned value, so it renders a verdict on any disc.
+    a_tot = 0
+    a_bad = []
+    for _sec in sorted(blocks):
+        _b = blocks[_sec]
+        _off = 16 + 16 * _b["nsub"]
+        for _s in _b["subs"]:
+            a_tot += 1
+            if _s["dlen"] % 4 or _off % 4:
+                a_bad.append((_sec, _s["idx"]))
+            _off += _s["dlen"]
+    rep.gate(39, "sub-block 4-byte alignment, whole archive",
+             a_tot == 23828 and not a_bad,
+             "%d sub-blocks, %d misaligned%s"
+             % (a_tot, len(a_bad),
+                "" if not a_bad else " (first sector %d sub %d)" % a_bad[0]),
+             "23828 sub-blocks, 0 misaligned")
 
     # 18, 19, 20  LZS
     flagged = [(s, sb) for s, sb in hbd.sub_blocks(blocks) if sb["flags"] == hbd.FLAG_LZS]

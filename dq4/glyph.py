@@ -3,24 +3,30 @@
 Atlas wraps a 4bpp image and exposes cell extraction, ink extents and ASCII art.
 find_atlases() pulls the atlas sub-blocks out of an archive.
 
-  cell(slot)      intensities as a list of rows
-  extent(slot)    (ink_percent, top, bottom, left, right)
-  art(slot)       ASCII art rows for one cell
-  art_row(slots)  several cells side by side
+  cell(slot)          raw 4bpp values as a list of rows
+  plane(slot, p)      one 2-bit plane, which is ONE glyph
+  extent(slot)        (ink_percent, top, bottom, left, right)
+  art(slot)           ASCII art rows for one cell
+  plane_art(slot, p)  ASCII art for a single glyph
+  art_row(slots)      several cells side by side
 
-DQ4_LATIN_SLOTS maps the slots identified by hand to their letters. Those
-identifications are human reads, not machine output.
+IMPORTANT: the atlas packs TWO glyphs into every cell, one in each 2-bit plane of
+the 4bpp pixel, and bit 0 of a character's font descriptor selects which is
+visible by choosing a CLUT. cell() and art() return the superposition of both,
+which is rarely what you want. Use plane() and dq4.fonts.cell_plane().
 
-Format details are in FORMAT.md section 8.
+A constant DQ4_LATIN_SLOTS used to live here, mapping 13 cells to 13 capitals
+identified by hand. It has been REMOVED. It was reading superimposed planes, and
+the atlas in fact carries all 26 capitals, all 26 lowercase and all 10 digits.
+Derive the mapping from dq4.fonts.table() rather than from a hand-made dict.
+
+Format details are in FORMAT.md sections 8 and 15.
 """
 
 CELL_W = 8
 CELL_H = 14
 ATLAS_W = 256
-
-# Slots identified by hand in Phase 3b, DQ4's 16,128-byte atlas.
-DQ4_LATIN_SLOTS = {26: "Z", 27: "X", 28: "V", 29: "T", 30: "R", 31: "P", 32: "N",
-                   33: "L", 34: "J", 35: "H", 36: "F", 37: "D", 38: "B"}
+PLANES = 2
 
 
 class Atlas:
@@ -46,10 +52,30 @@ class Atlas:
         return col * self.cell_w, band * self.cell_h
 
     def cell(self, slot):
-        """[[intensity]] of one cell, cell_h rows by cell_w columns."""
+        """[[intensity]] of one cell, cell_h rows by cell_w columns.
+
+        This is the RAW 4bpp value, which superimposes both glyphs stored in the
+        cell. For a single glyph use plane().
+        """
         x0, y0 = self.slot_origin(slot)
         return [[self.pixel(x0 + dx, y0 + dy) for dx in range(self.cell_w)]
                 for dy in range(self.cell_h)]
+
+    def plane(self, slot, plane):
+        """[[0..3]] for ONE glyph: the given 2-bit plane of the cell."""
+        if plane not in (0, 1):
+            raise ValueError("plane must be 0 or 1, got %r" % (plane,))
+        sh = 2 * plane
+        return [[(v >> sh) & 3 for v in row] for row in self.cell(slot)]
+
+    def plane_ink(self, slot, plane):
+        """Number of non-zero pixels in one glyph. Zero means no glyph there."""
+        return sum(1 for row in self.plane(slot, plane) for v in row if v)
+
+    def plane_art(self, slot, plane, hi=2):
+        """[str] ASCII art for a single glyph, '#' dark, '+' faint, '.' clear."""
+        return ["".join("#" if v >= hi else ("+" if v else ".") for v in row)
+                for row in self.plane(slot, plane)]
 
     def extent(self, slot):
         """(ink_percent, top, bottom, left, right) or (0, None, None, None, None)."""

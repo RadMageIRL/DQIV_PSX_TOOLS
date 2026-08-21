@@ -83,9 +83,25 @@ sector format begins there (section 8). MEASURED, Phase 0; the heap scan is gate
 |---:|---:|---|
 | 0 | u32 | data length |
 | 4 | u32 | uncompressed length |
-| 8 | u32 | unknown |
+| 8 | u32 | RAM load address, or zero |
 | 12 | u16 | flags |
 | 14 | u16 | type |
+
+The field at +8 was carried as unknown until Phase 28. It is a **destination address in main
+RAM**: 21 distinct values, all in the 0x8001xxxx to 0x801Exxxx range, nonzero on **965 of
+23,828** sub-blocks and zero on the rest. It never equals either length field. Sub-block types
+that load to a fixed address record it here; everything else carries zero. MEASURED.
+
+**Alignment.** Sub-block start offsets are not stored anywhere; they are implied by accumulating
+`dlen` from the sub-block table, and condition 4 of the validity filter requires the lengths to
+sum exactly to the block total. There is therefore no way to express a gap or a pad between
+sub-blocks.
+
+**Every sub-block in the shipped archive has a `dlen` that is a multiple of 4 and starts 4-byte
+aligned: 23,828 of 23,828, zero exceptions.** MEASURED, gate 39. This is load-bearing, not
+decorative. The engine reads the text block header with `lw`, and on an R3000 an unaligned `lw`
+raises an Address Error. Any tool that rewrites a sub-block must land on a multiple of 4 or it
+will misalign every sub-block after it. See section 16 for what this cost.
 
 ### The validity filter
 
@@ -444,21 +460,44 @@ through 6, **effective body width is 6 of 8**, or 7 of 8 if the shadow is counte
 
 ### What the atlas contains
 
-The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a strictly
-ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
-absent from this atlas. MEASURED, gate 17 and Phase 3b.
+> **CORRECTED, Phase 22.** This section previously read:
+>
+> > "The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a strictly
+> > ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
+> > absent from this atlas."
+>
+> That is wrong, and so is everything built on it. See section 11's retraction.
 
-The remaining non-blank slots hold kana, kanji, punctuation and small forms.
+**Every cell holds two glyphs, one in each 2-bit plane of the 4bpp pixel.** Bit 0 of a
+character's font descriptor selects which is visible, by choosing a CLUT. Reading a cell as a
+single 4bpp image superimposes both, which is exactly what produced the "13 capitals" reading:
+the alternating, descending run was the even and odd planes of consecutive cells.
 
-**129 slots are kanji, rendered halfwidth at 8 x 14.** MEASURED, Phase 6, established two ways:
-by rendering them, and by counting horizontal strokes spanning at least 5 of the 8 columns.
-Those 129 average 10.8 such strokes with a minimum of 7, against a mean of 5.3 and a maximum of
-8 for the 13 known Latin capitals. Dense multi-stroke glyphs at that count are kanji.
+**The atlas carries all 26 Latin capitals, all 26 lowercase and all 10 digits.** MEASURED, by
+reconstructing the game's own font table from executable bytes and rendering each glyph from
+the cell and plane its entry names. Gate 17 asserts 62 of 62.
 
-So DQ4 renders kanji at 8 x 14 from this atlas. It holds 129 of the 1,315 distinct kanji the
-script uses, so it is a partial set and a larger source exists somewhere. That source has not
-been located. The remaining slot classifications, kana against symbols, are still by ink
-density and height **proxy**: INFERRED.
+```
+Ａ 39.0  Ｂ 38.1  Ｃ 38.0  Ｄ 37.1  Ｅ 37.0  ...  Ｚ 26.1      (cell.plane)
+ａ 26.0  ｂ 25.1  ｃ 25.0  ｄ 24.1  ｅ 24.0  ...  ｚ 13.1
+０ 44.0  １ 43.1  ２ 43.0  ３ 42.1  ...            ９ 39.1
+```
+
+288 cells, 268 non-blank, so up to 536 glyph slots; the font 1 table names 533 of them. The two
+blank cells, 6 and 7, are named by no code, and their four descriptors are among the six the
+table never uses. The table's unused half-cells and the image's blank cells are the same cells,
+measured by two independent routes.
+
+The 65 to 90 percent per-cell ink in the lower bands, once flagged as suspicious for a glyph
+sheet, is simply two glyphs superimposed.
+
+**Kanji.** The earlier "129 kanji at 8 x 14" was counted on the superposition and is not
+reliable. What is measured is that **18 of the leaves in text id 0x006C's own script have no
+font 1 entry at all**, and 14 of those are supplied by that block's own embedded font 2 table
+(section 15). This atlas was never the only kanji source.
+
+The remaining slot classifications, kana against symbols, are still by ink density and height
+**proxy**: INFERRED.
 
 ### The 60 01 01 80 band
 
@@ -601,17 +640,21 @@ on the disc, which is consistent with every byte-level scan returning chance. Th
 walks a block to string N has not been located; it was not found among the 11 functions that
 touch the resident block table.
 
-**The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
-tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
+**RESOLVED, Phase 26: the per-kanji record table at `d + 32`.** It is the block's own **font 2
+glyph table**. Full description in section 15. Every observation recorded here while it was
+unknown turns out to be correct and is now explained:
 
-The u32 is **block-local**. Of 897 kanji appearing in the record tables of three or more text
-ids, only 34 carry the same u32 everywhere; 863 differ, and the mean ratio of distinct values
-to blocks is 0.858. It is an index into something local to the block, not a global glyph
-identifier pointing at a shared payload. MEASURED, Phase 8.
-
-That 16-bit field was once read as a glyph width and height, 0x0D0C as 12 by 13. **That reading
-is withdrawn**: the atlas renders kanji at 8 pixels wide, so a 12-wide glyph dimension cannot
-describe them. MEASURED, Phase 6.
+- "One 8-byte record per kanji leaf" is a chain entry: u32 descriptor, u16 character code at
+  +4, u8 width at +6, u8 height at +7. For text id 0x006C the first entry sits at exactly
+  `d + 32` and there are 15 of them.
+- "The u32 is block-local, 863 of 897 differ" is right, and now obvious: it is an **offset into
+  the block's own glyph payload**, whose position is named by the font record at `d + 4`. Being
+  block-local is the whole point.
+- **The withdrawn width and height reading was correct and is reinstated.** 0x0D0C really is 12
+  wide by 13 high, and 0x080B really is 11 by 8 on the record carrying 一, both confirmed
+  directly. The withdrawal reasoned that "the atlas renders kanji at 8 pixels wide, so a
+  12-wide glyph dimension cannot describe them". True of font 1, and irrelevant: these are
+  **font 2** glyphs, which are proportional and up to 16 x 16. MEASURED, Phase 26.
 
 That the table is kanji-related does hold up. Dragon Warrior VII has 2,122 sub-blocks with the
 same six-int text header structure, and every one carries the same `[d, a)` header shape with
@@ -624,10 +667,10 @@ records begin at `d + 32`.
 **The 60 01 01 80 band internals.** Identified as STR video (section 8). The frames themselves
 are not decoded here.
 
-**The fullwidth font.** The atlas cell is 8 by 14 and holds 129 kanji at that size. The script
-uses 1,315 distinct kanji, so a larger source exists and is **not located**. A sweep of 21,418
-unique sub-blocks across seven row widths and four cell heights found no second atlas, and the
-console BIOS is ruled out (section 11).
+**RESOLVED, Phases 21 to 26: the fullwidth font.** There is a second font, and the reason no
+sweep of the archive ever found it is that **it is not in the archive**. Font 2 is registered
+from a fixed address inside `SLPM_869.16`, and each map text block ships its own supplement.
+Section 15. The sweep was sound; it was looking in the wrong file.
 
 **The string count gap.** Counting one block per distinct text id gives 17,234 strings.
 Markus's published figure is 16,695. The difference of 539 is **reported, not closed**: what
@@ -663,34 +706,60 @@ Tested directly. Of 17 records, **3** have an offset that lands on a string star
 stream, and those three are exactly the records whose offset is zero. Zero records land on a
 symbol boundary carrying that record's own kanji.
 
-### Type 1 blocks are not the English game's text font
+### RETRACTED: "Type 1 blocks are not the English game's text font"
 
-Dragon Warrior VII, a shipped English game on the same engine family, has a type 1 atlas in
-the identical format: same 4bpp low-nibble-first packing, same 256 pixel width, same 8 by 14
-cell, same 14-row band, same drop shadow convention. Its 1,024-byte companion block is
-**byte identical** to Dragon Quest IV's.
+**This negative result is wrong and is withdrawn in full.** It is kept visible because a
+published negative result that is wrong is worse than none at all: it tells the next person not
+to look. What it said:
 
-That atlas contains 13 Latin capitals: Y, W, U, S, Q, O, M, K, I, G, E, C and A. The exact
-complement of Dragon Quest IV's thirteen. A shipped English game cannot render its text from
-half an alphabet, so the type 1 block is not the text font in either game.
+> "That atlas contains 13 Latin capitals: Y, W, U, S, Q, O, M, K, I, G, E, C and A. The exact
+> complement of Dragon Quest IV's thirteen. A shipped English game cannot render its text from
+> half an alphabet, so the type 1 block is not the text font in either game.
+>
+> The absence was **proved, not assumed**, with a calibrated threshold:
+>
+> | Comparison | Score, max 112 |
+> |---|---:|
+> | a letter against itself | **112** |
+> | different letters, same font, mean of all pairs | 50.8 |
+> | different letters, same font, **worst case** | 32 |
+> | different letters, same font, **best case** | **91** |
+> | **best cross-atlas match found, searching every pixel offset** | **82** |
+>
+> Every cross-atlas best match falls below the 91 same-font ceiling, and every one lands on a
+> **shape neighbour**: B matches C, P matches O, N matches M, R matches Q. That is the signature
+> of absence, not of a font revision.
+>
+> A second hypothesis, that the run turns around and the missing letters follow, was tested by
+> matching the next thirteen slots against the expected letters in order. Mean score 42.2
+> against a null of 41.1. No signal."
 
-The absence was **proved, not assumed**, with a calibrated threshold:
+**What was actually measured.** The letters were never absent. Every cell of the atlas holds
+**two glyphs, one in each 2-bit plane of the 4bpp pixel**, selected by bit 0 of the font
+descriptor. Every comparison above was run against the superposition of two letters. DQ4's
+atlas carries all 26 capitals, all 26 lowercase and all 10 digits, and English text has since
+been rendered in-game from it (section 15, and the screenshots in `docs/images/`).
 
-| Comparison | Score, max 112 |
-|---|---:|
-| a letter against itself | **112** |
-| different letters, same font, mean of all pairs | 50.8 |
-| different letters, same font, **worst case** | 32 |
-| different letters, same font, **best case** | **91** |
-| **best cross-atlas match found, searching every pixel offset** | **82** |
+The observation that DW7's atlas holds "the exact complement" is the same error seen from the
+other side: that read resolved the opposite plane. INFERRED, not re-measured: DW7 almost
+certainly carries all 26 too. The observation that both games share a layout convention stands;
+only the conclusion drawn from it was wrong.
 
-Every cross-atlas best match falls below the 91 same-font ceiling, and every one lands on a
-**shape neighbour**: B matches C, P matches O, N matches M, R matches Q. That is the signature
-of absence, not of a font revision.
+**Why the method produced a confident wrong answer.** The calibration was sound and the
+arithmetic was correct. Every number in that table is reproducible. The fault is that the
+whole comparison ran on a decoding of the image that was wrong, and no amount of calibration
+inside a wrong decoding can detect that. Worse, the calibration made the result feel earned:
+a self-112 / ceiling-91 / best-82 spread looks like exactly the kind of evidence that should
+settle a question.
 
-A second hypothesis, that the run turns around and the missing letters follow, was tested by
-matching the next thirteen slots against the expected letters in order. Mean score 42.2
-against a null of 41.1. No signal.
+The shape-neighbour pattern that read as "the signature of absence" was the real tell and was
+misread. B scoring against C, P against O, N against M, R against Q is what you get when each
+cell contains **both** letters of an adjacent pair: B and C share cell 38, and the superposition
+resembles either one. That pattern was evidence of superposition and was interpreted as
+evidence of absence.
+
+The lesson is in section 16. A measurement can be correct, calibrated, reproducible and still
+answer a question you are not asking, if the representation it runs on is wrong.
 
 ### LZS over `[p2, a)` is not a glyph bank either
 
@@ -912,10 +981,29 @@ the blocks where an optimal tree beats theirs, by exactly 9 bits each, with zero
 either direction. Corpus-wide their coding is within **0.034%** of optimal (4,876,608 bits against
 4,874,947), so this is the only systematic difference.
 
+Constraining every leaf to depth 2 or more is the same problem as packing the symbols under a
+root with **four** slots, since sum 2^-(L-2) = 4. So the constrained optimum is reached by
+running ordinary Huffman merges until exactly four items remain and hanging those at depth 2.
+That is what `treebuild.build(freqs, min_depth=2)` does.
+
 **An equally optimal tree usually moves string offsets.** Total encoded length matches theirs on
 916 of 1,106 blocks, but every string start survives on only **142 of 1,106**: the same total is
 redistributed between symbols. To re-encode a block while freezing its offsets, build from the
 original's code **lengths** (`build_from_lengths`) rather than from frequencies.
+
+**`build_from_lengths` does not reproduce their pair arrays.** It matches the code **lengths**,
+which is what freezes the offsets, but the emitted array is byte-identical to the original on
+**0 of 1,528** text blocks. A claim that it matched 1,097 of 1,106 has circulated in this
+project's own notes; that figure was about length totals, not arrays. MEASURED, Phase 27.
+
+**Arrangement is not load-bearing.** Both builders satisfy every structural convention the
+originals do, checked field by field: `root == m - 1`, the highest node value referenced is
+`m - 2`, no child's node number is greater than or equal to its parent's, every node number
+below the root is referenced exactly once, the pad pair at index `2m` is 0x0000, and leaf values
+sit below 0x8000 with nodes at or above. A tree built from frequencies decodes correctly under
+the engine's own walk, transcribed instruction for instruction, and every referrer in the block
+terminates on END. MEASURED, Phase 27. If a rebuilt block misbehaves, the tree is not the first
+place to look; see section 16.
 
 Bits per symbol over all 1,528 sub-blocks: originals **7.8061**, built trees **7.8055**. Phase 1's
 collapsed tree measured 1.06 on this basis, so it remains the degeneracy check.
@@ -1318,3 +1406,178 @@ per-block figure when the question is what can be edited.
 3,462 non-empty strings remain unaccounted: 1,330 in the 285 wholly-unreferenced ids, and 2,132
 scattered inside otherwise-referenced blocks. Scattered misses are the signature of a system not
 yet found, and three such systems have now been found the same way, by locating a record stride.
+
+---
+
+## 15. Rendering
+
+How a character code becomes pixels. None of this was documented before Phase 21; the sections
+above describe the atlas image, this one describes the path that reads it.
+
+### 15.1 Two fonts, selected by a mode byte
+
+| | font 1 | font 2 |
+|---|---|---|
+| registered from | `0x800B2A3C` | `0x800B3600` |
+| font record | `0x800B2A58` | `0x800B361C` |
+| hash modulus | 137 | 29 |
+| entries | **533** | **521** |
+| chain stride | 4, code at +2 | 8, code at +4 |
+| cell | fixed **8 x 14** | per glyph, up to 16 x 16 |
+| pixels | resident 4bpp atlas, two glyphs per cell | 2bpp run length, expanded per character |
+| advance | fixed 8 | per glyph, from the entry |
+
+Both are keyed by **fullwidth Shift-JIS codes** and neither contains any code below 0x8000.
+Font 2 covers the same code space as font 1, including all 52 Latin letters, with proportional
+widths: capitals mean 9.3 px, lowercase 7.4, digits 7.7, kanji 11.9.
+
+**Font selection is a caller-set mode, not a property of the character.** At `0x8002D620` the
+drawing routine loads a byte from the text state at `+131` and compares it against 1 and 2:
+
+```
+0x8002D620  lbu a0,131(s0)
+0x8002D638  beq a0,s3,0x8002D650      ; s3 = 1 -> font 1
+0x8002D640  beq a0,fp,0x8002D6E4      ; fp = 2 -> font 2
+```
+
+The same character code goes to whichever font is active.
+
+### 15.2 The lookup
+
+`0x8008F7B0`, a chained hash. `bucket = code % modulus` via `divu` and `mfhi`; the bucket
+halfword is a **self relative** offset to a chain; a zero code terminates the chain. Two chain
+layouts, selected by whether the record's cell width and height at +20 and +22 are both nonzero.
+
+**The walk is bounded on every axis**: 12 slots, `slot+20` records per slot, and a zero-code
+terminator per chain. A code with no entry returns 0, the caller returns -1, nothing is drawn
+and the pen does not advance. There is one unbounded hazard, `break 0x1C00` at `0x8008F830` on
+a zero modulus.
+
+That bounding only holds while the chain data is well formed. A bucket array pointing at
+arbitrary bytes walks arbitrary memory; see 15.5.
+
+`dq4/fonts.py` reconstructs either table from executable bytes.
+
+### 15.3 Descriptor to texture coordinates
+
+For font 1 the descriptor is a dense index over glyphs:
+
+```
+cell  = descriptor >> 1
+plane = descriptor & 1        selects the CLUT, which selects which glyph is visible
+U     = (cell % 32) * 8
+V     = (cell / 32) * 14
+```
+
+MEASURED at `0x80087364` to `0x800873BC`. This **independently confirms the atlas geometry** in
+section 8, which had been derived from the image alone: 32 columns of 8 pixels, 14-pixel rows.
+
+One character emits one 20-byte GPU packet: command 0x65, textured rectangle, W 8, H 14, with
+the CLUT id at +14 taken from a table at `0x800E7810`.
+
+### 15.4 Advance
+
+Both fonts share one instruction, `addu a0,a0,s5` at `0x800876B8`. Only the source of `s5`
+differs: font 1 hardcodes `addiu s5,zero,8` at `0x800872E8`, file offset 0x06FBE8; font 2 reads
+`lbu s5,6(a1)` from the chain entry. So variable advance is already supported by the renderer
+and font 1 simply does not use it. Note that `s5` is also the primitive width register, so
+changing the immediate would clip the sampled rectangle, not merely tighten spacing.
+
+### 15.5 The embedded per-block font table
+
+**Every map text block carries its own font 2 supplement.** This is the structure section 10
+carried for a long time as "the per-kanji record table at `d + 32`".
+
+`register_block` at `0x8008F178` registers text blocks with the same header shape as font
+blocks, so `block+12`, which is `d` for a text block, becomes the record count and record array
+pointer. The block record at `d + 4` is a real font record with font id 2.
+
+| field | for text id 0x006C |
+|---|---|
+| record at `d + 4` | `+0` bucket array offset **984**, `+4` glyph payload offset **1124**, modulus 2, font id 2 |
+| bucket array | `block + 984` |
+| chain entries | `block + 988`, which is `d + 32`, 15 entries of 8 bytes |
+| entry layout | u32 descriptor, u16 code at +4, u8 width at +6, u8 height at +7 |
+
+0x006C supplies 15 kanji at 12 x 13 and 11 x 8, and **14 of the 18 leaves in its own script have
+no font 1 entry**, so the scene cannot draw its own dialogue without this table.
+
+**The `+0` and `+4` fields are offsets from the block base.** Anything that moves `d` must move
+them with it. Copying the region verbatim while `d` moves points the bucket array at whatever
+now occupies that offset; in one build it landed inside the tree pair array and the chain walked
+to offset 33,821 in an 1,804-byte block. MEASURED, Phase 26.
+
+### 15.6 The leaf space wall
+
+Relevant to anyone attempting English. `0x8008F3BC` returns a character, and its Huffman path
+ends with:
+
+```
+0x8008F594  beq s1,zero,0x8008F5A0      ; END skips the ori
+0x8008F59C  ori s1,s1,0x8000            ; file offset 0x077E9C
+```
+
+**Every non-zero leaf has bit 15 set unconditionally**, so the Huffman path can return only
+0x8000 to 0xFFFF plus 0x0000 for END. A stored leaf of 0x0041 comes back as 0x8041.
+**Halfwidth ASCII is unreachable from compressed text**, and that single `ori` is the wall any
+workaround has to route around.
+
+Of that space, 0xFE01 to 0xFEFF is consumed by the phrase dictionary (section 5) and 0xFF00 to
+0xFFFF by control codes (section 6).
+
+The engine **does** have a single-byte path. When the state word is negative, `0x8008F3BC` reads
+raw Shift-JIS and classifies lead bytes at `0x8008F3F0` to `0x8008F414`, returning a single byte
+of 0x00 to 0xFE from `0x8008F4E8`. It is not reachable from compressed text, and since neither
+font table contains any code below 0x8000, such a value would miss both fonts and draw nothing.
+
+### 15.7 Line metrics
+
+**Font 1 renders every character in 8 pixels**, kanji included. "Fullwidth" names a region of
+the Shift-JIS **code** space, not a rendered width. Worth stating plainly, because assuming
+otherwise cost this project three phases of misdirected work.
+
+The longest line the game draws anywhere in its own script is **24 characters**; the 99th
+percentile is 18. MEASURED over 67,020 lines. At 8 pixels that is 192 of the 320 available.
+
+### 15.8 Recompression and alignment
+
+`lzs_comp.compress` takes a `max_chain` bound on its hash chain walk. Varying it from 1 to 64
+produces **35 distinct output lengths** for the same input, every one round-tripping byte
+identically and every one preserving the +3 overrun. Alignment (section 2) is therefore reached
+by **choosing a search depth**, not by padding.
+
+Padding does not work: appending one byte lands on an odd length, and two or three move the
+overrun from +3 to +6 or +21, which gate 20 rejects.
+
+---
+
+## 16. On gates
+
+The most transferable thing in this repository is not a format detail. It is this.
+
+**Four separate defects passed every gate written from this project's own model of the format.**
+Each was caught only by a check derived from a statistic the shipped game exhibits:
+
+| defect | what caught it |
+|---|---|
+| a collapsed Huffman decoder that round-tripped byte-exactly | **bits per symbol**, 1.06 against a corpus norm of 7.81 |
+| a recompressed block whose LZS overrun drifted from +3 to 0 | the **pristine overrun distribution** across the whole archive |
+| a font table reading that fit 13 of 13 Latin capitals | a **20-kana companion**, which the 13-capital gate had already passed |
+| four builds that hung the console on sub-block misalignment | the **23,828 sub-block alignment census** |
+
+In every case the failing artifact satisfied the checks that came from our own understanding.
+The round trip really did round trip. The 13 capitals really did fit. The referrers really did
+resolve, 12 of 12, on a disc that would not boot.
+
+**A gate written from a model tests the model.** If the model is wrong, the gate is wrong in the
+same direction and agrees with itself. That is why a calibrated, reproducible and
+arithmetically correct absence proof (section 11) held a confident wrong answer for three
+phases.
+
+Gates that catch real faults compare against **invariants the shipped game exhibits**, measured
+from the original data rather than derived from an interpretation of it. They are usually
+cheaper to write than the model-based ones, and they are the ones worth adding first. Anyone
+reusing this library should add gates of the second kind before trusting what it produces.
+
+The corollary, learned the same way: **every gate needs a companion that can fail differently.**
+A gate that can pass degenerately will eventually pass degenerately.
