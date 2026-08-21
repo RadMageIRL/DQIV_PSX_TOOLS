@@ -26,7 +26,7 @@ from . import mips, referrers
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
 # diff the corpus and review before accepting a new value.
-ROLLUP_EXPECTED = "0654916270fe1e949852f4511e8b2802fff07964e8c3c0b9463a8210c70a1103"
+ROLLUP_EXPECTED = "ced6d48f69ebfe5e93e6b50f8830120588fa88f4c70aef9b12b7e170219945e3"
 EXE_ROLLUP_EXPECTED = "fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2"
 
 DUMMY_MARK = "ダミー"          # katakana damii
@@ -37,7 +37,7 @@ DUMMY, EMPTY, CONTROL, UNRESOLVED = "DUMMY", "EMPTY", "CONTROL", "UNRESOLVED"
 # covers both "reached by position" and "referrer not yet found" without
 # guessing the split.
 STATUS_ORDER = (referrers.LOOKUP, referrers.TABLE, referrers.ROSTER,
-                UNRESOLVED, CONTROL, EMPTY, DUMMY)
+                referrers.SCRIPT, UNRESOLVED, CONTROL, EMPTY, DUMMY)
 
 
 def string_status(refs, tid, i, nchar, nctrl, is_dummy):
@@ -55,7 +55,8 @@ def string_status(refs, tid, i, nchar, nctrl, is_dummy):
     got = refs.get((tid, i))
     if not got:
         return UNRESOLVED, ""
-    for system in (referrers.LOOKUP, referrers.TABLE, referrers.ROSTER):
+    for system in (referrers.LOOKUP, referrers.TABLE, referrers.ROSTER,
+                   referrers.SCRIPT):
         here = [w for sysname, w in got if sysname == system]
         if here:
             extra = "" if len(got) == 1 else ", %d refs" % len(got)
@@ -379,7 +380,7 @@ def build(disc_path, out_dir):
         "# pad. sum of per-string bits + residue == region, exactly, for every block.",
         "#",
         "# text id | sector | sub | type | dlen | symbols | strings | non-empty"
-        " | LOOKUP | TABLE | ROSTER | UNRESOLVED | EMPTY | DUMMY"
+        " | LOOKUP | TABLE | ROSTER | SCRIPT | UNRESOLVED | EMPTY | DUMMY"
         " | region bits | consumed bits | residue bits | editability"
         " | uk | resolution | editable strings | dummy-only"
         " | wholly unreferenced | duplicate sectors",
@@ -389,12 +390,13 @@ def build(disc_path, out_dir):
         name = "%04X%s" % (tid, suffix)
         ne = sum(v for k, v in counts.items() if k not in (EMPTY,))
         index_lines.append(
-            "%04X%s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d"
+            "%04X%s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d"
             " | %d | %d | %d | %s | %s | %s | %d | %s | %s | %s"
             % (tid, suffix, sector, sub["idx"], sub["type"], sub["dlen"],
                len(b.symbols), len(b.raw_strings), ne,
                counts.get(referrers.LOOKUP, 0), counts.get(referrers.TABLE, 0),
-               counts.get(referrers.ROSTER, 0), counts.get(UNRESOLVED, 0),
+               counts.get(referrers.ROSTER, 0), counts.get(referrers.SCRIPT, 0),
+               counts.get(UNRESOLVED, 0),
                counts.get(EMPTY, 0), counts.get(DUMMY, 0),
                region_bits, consumed_bits, residue_bits, edit,
                "none" if uk is None else str(uk), resolution,
@@ -782,6 +784,8 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
         "| LOOKUP | %d | tail record table, Phase 10 |" % status.get("LOOKUP", 0),
         "| TABLE | %d | type 26 record field, Phase 11 and 12 |" % status.get("TABLE", 0),
         "| ROSTER | %d | type 44 roster table, Phase 12 |" % status.get("ROSTER", 0),
+        "| SCRIPT | %d | type 39 cutscene command C0 21 A0, Phase 15 |"
+        % status.get("SCRIPT", 0),
         "| UNRESOLVED | %d | no measured referrer |" % status.get(UNRESOLVED, 0),
         "| EMPTY | %d | zero displayed characters |" % status.get(EMPTY, 0),
         "| DUMMY | %d | in a block whose every non-empty string is a dummy |"

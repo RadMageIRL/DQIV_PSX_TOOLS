@@ -6,6 +6,8 @@ Three measured referrer systems, all carrying the same 32-bit word,
   LOOKUP  tail record tables inside type 40 and 42 text blocks   (Phase 10)
   TABLE   word 0 to 2 of each 60-byte type 26 record             (Phase 11, 12)
   ROSTER  word-aligned entries in type 44 sub-blocks             (Phase 12)
+  SCRIPT  the 3-byte command C0 21 A0 in type 39 cutscene
+          scripts, followed by the same packed word              (Phase 15)
 
 Plus the same TABLE mechanism reaching the two executable-resident blocks from
 static tables in SLPM_869.16.
@@ -21,7 +23,13 @@ import struct
 
 from . import hbd, huffman, lzs, textblock
 
-LOOKUP, TABLE, ROSTER = "LOOKUP", "TABLE", "ROSTER"
+LOOKUP, TABLE, ROSTER, SCRIPT = "LOOKUP", "TABLE", "ROSTER", "SCRIPT"
+
+# The cutscene dialogue command. It is a THREE-byte opcode on a byte-aligned
+# stream, not a word-aligned u32: the same bytes occur at all four alignments
+# (15207 / 6737 / 4515 / 10735), so reading only the 4-aligned ones sees a
+# quarter of the stream and calls the rest noise.
+SCRIPT_CMD = bytes((0xC0, 0x21, 0xA0))
 
 # type 26 records are 60 bytes; the reference sits in words 0 to 2, and words
 # 3 to 11 never hold a text id in any of the 2,425 records on the disc.
@@ -68,10 +76,13 @@ def _distinct(arch, blocks, want_type):
             continue
         raw = hbd.sub_bytes(arch, sub)
         if sub["flags"] == hbd.FLAG_LZS:
-            try:
-                raw = lzs.decompress(raw, sub["ulen"])
-            except Exception:
-                continue
+            # Deliberately NOT wrapped in a bare except. A swallowed exception
+            # here silently drops sub-blocks from the measurement, which is
+            # exactly how 922 of 976 type 39 blocks went unexamined for three
+            # phases: decompress() takes one argument and was being called with
+            # two, so every compressed sub-block raised TypeError into an
+            # `except Exception: continue`.
+            raw = lzs.decompress(raw)
         if raw in seen:
             continue
         seen.add(raw)
@@ -131,6 +142,18 @@ def build(arch, blocks, index=None):
                 refs[hit].append(
                     (ROSTER, "type 44 sector %d sub %d +0x%X"
                      % (sector, sub["idx"], o)))
+    # SCRIPT: the 3-byte command followed by a packed reference, byte aligned
+    for sector, sub, raw in _distinct(arch, blocks, 39):
+        o = raw.find(SCRIPT_CMD)
+        while o >= 0:
+            p = o + len(SCRIPT_CMD)
+            if p + 4 <= len(raw):
+                hit = _resolve(index, struct.unpack_from("<I", raw, p)[0])
+                if hit is not None:
+                    refs[hit].append(
+                        (SCRIPT, "type 39 sector %d sub %d +0x%X"
+                         % (sector, sub["idx"], p)))
+            o = raw.find(SCRIPT_CMD, o + 1)
     return dict(refs)
 
 

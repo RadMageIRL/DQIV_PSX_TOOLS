@@ -1124,6 +1124,7 @@ word sits.
 | 1 | tail record tables in type 40/42 blocks | 9,371 | 100.00% on a string start |
 | 2 | **type 26**, word 0 of each 60-byte record | 955 | 98.28% trimmed |
 | 3 | **type 44**, roster tables at an 8-byte stride | 1,539 | concentration, 13 ids vs 63 to 68 shuffled |
+| 4 | **type 39**, the 3-byte command `C0 21 A0` | 3,202 | 89.9% of valid-id arguments, +/-1 bit at 0 |
 
 Mutual overlap is 1 reference in total. Union **11,864**, of which 11,856 are non-empty:
 **77.40% of the 15,318 non-empty strings**.
@@ -1132,6 +1133,53 @@ The corpus carries this per string as a status field (`LOOKUP`, `TABLE`, `ROSTER
 `UNRESOLVED`, `EMPTY`, `DUMMY`) together with the referrer's address, and per block as a
 `CLEAN` or `BLOCKED` verdict in `meta/blockindex.txt`. There is deliberately no `ORDINAL`
 status: none was established, so `UNRESOLVED` covers both possibilities.
+
+### System 4: the cutscene command in type 39 scripts
+
+MEASURED, Phase 15, gate 37.
+
+**`C0 21 A0` is a THREE-BYTE command on a BYTE-ALIGNED stream**, followed by a four-byte packed
+`(text id << 20) | bit offset`, the same word the resolver at `0x8008F280` takes in its
+non-sentinel form.
+
+```
++0x100E  C0 21 A0        command
++0x1011  91 0F C0 06     LE u32 = 0x06C00F91 = (0x06C << 20) | 0xF91
+```
+
+| Test | Result |
+|---|---:|
+| `C0 21 A0` occurrences over 927 distinct scripts | 85,152 |
+| argument names a real text id | 3,769 |
+| **landing on a string start** | **3,388, 89.9% of valid-id arguments** |
+| plus 1 bit / minus 1 bit | **0 / 0** |
+| out of bounds | 0.45% |
+| shuffled control | 2 hits of 509 commands |
+
+**CORRECTED, Phase 15.** Phase 12 recorded that `C0 21 A0` is not a three-byte opcode and that the
+real unit is the word-aligned `0xA021C000` with 15,207 occurrences. That is one alignment of four:
+the same byte pattern occurs 15,207 / 6,737 / 4,515 / 10,735 times at offsets 0/1/2/3 mod 4, total
+37,194. Forcing word alignment reads a quarter of the stream and classifies the rest as noise.
+Mandy's three-byte form was correct.
+
+Binding: a script addresses **exactly one** text block, and the script and its text block always
+ship in the **same archive block** (463 of 463). The text id is an operand in every command, not a
+script-level constant.
+
+`0x80102448` is the **end of BSS**, referenced once at `0x80091900` in the BSS-clear loop before
+the entry point. Script data loaded there is a heap allocation, so the script pointer is dynamic
+and has no static reference to trace.
+
+### The instrument defect this phase uncovered
+
+`lzs.decompress(src)` takes one argument. Three call sites passed two, inside
+`except Exception: continue`, so every compressed sub-block raised TypeError and was skipped in
+silence: **922 of 976 type 39 sub-blocks went unmeasured for three phases.** Types 26, 40 and 42
+have no compressed sub-blocks, so the corpus and the system 1 to 3 totals were unaffected and
+re-measure byte-identical. What the bug invalidated was the type 39 negative result.
+
+**A `try/except Exception` around a measurement turns "my code is wrong" into "the data contains
+nothing", and reports them identically.** The silent skip is removed rather than fixed in place.
 
 ### Extent matters more than the reading
 

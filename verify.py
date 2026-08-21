@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs
 from dq4 import corpus as corpusmod
-from dq4 import mips
+from dq4 import mips, referrers
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -431,7 +431,7 @@ def main():
         raw = hbd.sub_bytes(arch, sb)
         if sb["flags"] == hbd.FLAG_LZS:
             try:
-                raw = lzs.decompress(raw, sb["ulen"])
+                raw = lzs.decompress(raw)
             except Exception:
                 continue
         if raw not in seen_c:
@@ -512,7 +512,7 @@ def main():
         raw = hbd.sub_bytes(arch, sb)
         if sb["flags"] == hbd.FLAG_LZS:
             try:
-                raw = lzs.decompress(raw, sb["ulen"])
+                raw = lzs.decompress(raw)
             except Exception:
                 continue
         if raw not in seen44:
@@ -545,6 +545,49 @@ def main():
              % (len(r44), nr, len(c44), nc),
              "real > 1400 refs in <= 20 ids, shuffled scattered over >= 40 ids")
 
+    # 37  the cutscene command. Three bytes on a BYTE-aligned stream, not a
+    # word-aligned u32: the same bytes occur at all four alignments, so reading
+    # only the 4-aligned quarter sees a quarter of the stream. Gated by the
+    # one-bit collapse, which no alignment artifact survives.
+    t39, seen39 = [], set()
+    for _s, sb in hbd.sub_blocks(blocks):
+        if sb["type"] != 39:
+            continue
+        raw = hbd.sub_bytes(arch, sb)
+        if sb["flags"] == hbd.FLAG_LZS:
+            raw = lzs.decompress(raw)
+        if raw not in seen39:
+            seen39.add(raw)
+            t39.append(raw)
+    idx39 = referrers.block_index(arch, blocks)
+
+    def _t39(shift):
+        tot = hit = 0
+        for raw in t39:
+            o = raw.find(referrers.SCRIPT_CMD)
+            while o >= 0:
+                q = o + 3
+                if q + 4 <= len(raw):
+                    w = struct.unpack_from("<I", raw, q)[0]
+                    ent = idx39.get(w >> 20)
+                    if ent is not None:
+                        tot += 1
+                        tb, offs, pos = ent
+                        i = pos.get((w & 0xFFFFF) - tb.c * 8 + shift)
+                        if i is not None and i + 1 < len(offs):
+                            hit += 1
+                o = raw.find(referrers.SCRIPT_CMD, o + 1)
+        return tot, hit
+
+    n39, h39 = _t39(0)
+    _t, hp = _t39(1)
+    _t, hm = _t39(-1)
+    rep.gate(37, "type 39 cutscene command resolves  (COMPANION)",
+             len(t39) == 927 and h39 == 3388 and hp == 0 and hm == 0,
+             "%d scripts, %d of %d valid-id commands on a string start, +1 %d, -1 %d"
+             % (len(t39), h39, n39, hp, hm),
+             "927 scripts, 3388 hits, 0 at +/-1 bit")
+
     # 22  corpus roll-up
     if args.corpus_out:
         built = corpusmod.build(args.dq4, args.corpus_out)
@@ -567,27 +610,27 @@ def main():
         # chars_clean is the NON-DUMMY figure. Dummy-only blocks are trivially
         # CLEAN, and counting their 543 characters inflated the published total to
         # 139,735. Both numbers are asserted so neither basis can drift.
-        rep.gate(34, "per-block editability matches Phase 12  (COMPANION)",
-                 built["clean_nd"] == 266 and built["total_nd"] == 925
-                 and built["chars_clean"] == 139192
+        rep.gate(34, "per-block editability matches Phase 15  (COMPANION)",
+                 built["clean_nd"] == 673 and built["total_nd"] == 925
+                 and built["chars_clean"] == 491333
                  and built["chars_clean_dummy"] == 543,
                  "%d CLEAN of %d non-dummy blocks, %d chars CLEAN non-dummy"
                  " + %d in dummy-only blocks"
                  % (built["clean_nd"], built["total_nd"], built["chars_clean"],
                     built["chars_clean_dummy"]),
-                 "266 CLEAN of 925 non-dummy, 139192 chars + 543 dummy")
+                 "673 CLEAN of 925 non-dummy, 491333 chars + 543 dummy")
 
         # 36  the suffix rule. A string is editable exactly when no unresolved
         # string sits after it, so the editable set is the suffix from the last
         # unresolved index. Asserted because it is the operative figure and it is
         # derived from the referrer map rather than the lossy status column.
         rep.gate(36, "suffix-rule editability, non-dummy blocks",
-                 built["ed_strings"][0] == 11437
-                 and built["ed_chars"][0] == 488490
-                 and built["ed_chars"][1] == 179414,
+                 built["ed_strings"][0] == 13891
+                 and built["ed_chars"][0] == 598364
+                 and built["ed_chars"][1] == 69540,
                  "%d editable strings, %d editable chars, %d frozen"
                  % (built["ed_strings"][0], built["ed_chars"][0], built["ed_chars"][1]),
-                 "11437 strings, 488490 chars editable, 179414 frozen")
+                 "13891 strings, 598364 chars editable, 69540 frozen")
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
 
