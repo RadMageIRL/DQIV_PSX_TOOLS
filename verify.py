@@ -434,6 +434,11 @@ def main():
         tot = hit = 0
         for b in bs:
             for k in range(0, len(b) - 3, 4):
+                # Scope to the reference field, words 0 to 2 of each 60-byte record.
+                # Rating a whole sub-block mixes the field with unrelated words whose
+                # top 12 bits happen to fall in the id range, dragging 98% down to 43%.
+                if (k // 4) % 15 > 2:
+                    continue
                 w = struct.unpack_from("<I", b, k)[0]
                 i = w >> 20
                 if i not in wantset:
@@ -450,10 +455,72 @@ def main():
     real_rate = 100.0 * hit26 / max(1, tot26)
     ctrl_rate = 100.0 * chit / max(1, ctot)
     rep.gate(30, "type 26 is a referrer system  (COMPANION)",
-             real_rate > 35.0 and ctrl_rate < 3.0 and real_rate > 20 * ctrl_rate,
+             real_rate > 95.0 and ctrl_rate < 3.0 and real_rate > 20 * ctrl_rate,
              "real %.2f%% (%d/%d), shuffled %.2f%% (%d/%d)"
              % (real_rate, hit26, tot26, ctrl_rate, chit, ctot),
-             "real > 35%, shuffled < 3%, real at least 20x control")
+             "real > 95%, shuffled < 3%, real at least 20x control")
+
+    # 31  COMPANION to 30. The 60-byte record period must hold WITHOUT the corpus,
+    # otherwise gate 30's scoping is fitted to the hit data. Two structural facts:
+    # every sub-block is a whole number of records, and residues 3 to 11 never carry a
+    # word whose top 12 bits are a text id.
+    ids_present = set(tb_by_id)
+    whole26 = sum(1 for b in bufs if (len(b) % 60) == 0)
+    stray = 0
+    for b in bufs:
+        for k in range(0, len(b) - 3, 4):
+            if 3 <= (k // 4) % 15 <= 11:
+                if (struct.unpack_from("<I", b, k)[0] >> 20) in ids_present:
+                    stray += 1
+    rep.gate(31, "type 26 record period holds without the corpus  (COMPANION)",
+             whole26 == len(bufs) and stray == 0,
+             "%d / %d sub-blocks are whole 60-byte records, %d stray ids in residues 3-11"
+             % (whole26, len(bufs), stray),
+             "all sub-blocks whole, 0 stray")
+
+    # 32  type 44 is a third referrer system. Its absolute hit rate is only ~1.7%,
+    # because these sub-blocks are large and mostly other data, so the rate is NOT the
+    # discriminator and a gate on it would be meaningless. Concentration is: a real
+    # pointer table names a handful of text ids, shuffled bytes scatter across many.
+    t44, seen44 = [], set()
+    for _s, sb in hbd.sub_blocks(blocks):
+        if sb["type"] != 44:
+            continue
+        raw = hbd.sub_bytes(arch, sb)
+        if sb["flags"] == hbd.FLAG_LZS:
+            try:
+                raw = lzs.decompress(raw, sb["ulen"])
+            except Exception:
+                continue
+        if raw not in seen44:
+            seen44.add(raw)
+            t44.append(raw)
+    starts44 = {}
+
+    def _t44(bs):
+        refs = set()
+        for b in bs:
+            for k in range(0, len(b) - 3, 4):
+                w = struct.unpack_from("<I", b, k)[0]
+                i = w >> 20
+                if i not in tb_by_id:
+                    continue
+                if i not in starts44:
+                    starts44[i] = huffman.string_starts(tb_by_id[i])
+                off = (w & 0xFFFFF) - tb_by_id[i].c * 8
+                if off in starts44[i]:
+                    refs.add((i, off))
+        return refs
+
+    r44 = _t44(t44)
+    rnd2 = random.Random(77)
+    c44 = _t44([bytes(sorted(b, key=lambda _c: rnd2.random())) for b in t44])
+    nr, nc = len({i for i, _o in r44}), len({i for i, _o in c44})
+    rep.gate(32, "type 44 references concentrate  (COMPANION)",
+             len(r44) > 1400 and nr <= 20 and nc >= 40,
+             "real %d refs in %d ids, shuffled %d refs in %d ids"
+             % (len(r44), nr, len(c44), nc),
+             "real > 1400 refs in <= 20 ids, shuffled scattered over >= 40 ids")
 
     # 22  corpus roll-up
     if args.corpus_out:

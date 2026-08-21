@@ -504,6 +504,39 @@ made types 44, 45 and 47 look like counterexamples. They are not compressed at a
 
 ---
 
+### CORRECTED, Phase 12: what 0x8008F3BC is
+
+Phase 11 described `0x8008F3BC` as "a unified character cursor, **not** the Huffman decoder".
+The negation is wrong. The range `0x8008F3BC` to `0x8008F600` contains **no `jr ra` at all**; the
+function's only return is at `0x8008F7A8`, so it is 253 instructions long and the dual-base walk
+Phase 9 cited at `0x8008F550-0x8008F568` is inside it.
+
+Both readings describe one function. It dispatches on the sign bit *and* walks the dual-base
+tree. Phase 9's attribution was correct throughout.
+
+The dual-base finding itself was never at risk, being proven independently by the codec at 1,528
+of 1,528 blocks. Only the attribution was disputed.
+
+**The transferable rule**, since no gate could have caught this: gate 26 checks that `jal` targets
+follow a `jr ra`, and it was correctly silent, because no boundary was crossed. The error was a
+claim made by negation from a partial read. **Do not state what a routine is not until you have
+read it to its `jr ra`.**
+
+### CORRECTED, Phase 12: ordinal addressing was inferred too early
+
+Phase 11 inferred that the unreferenced strings in `0x0020` (place names), `0x0026` (person
+types) and `0x022B` (a party-member family) were reached by ordinal rather than by pointer, on
+the strength of their content.
+
+**Sub-block type 44 references them** (section 14): `0x0021` completely at 1,086 of 1,086,
+`0x0020` at 380 of 395, `0x0026` at 55 of 59, `0x0022` at 7 of 7. The inference is withdrawn for
+the name tables. Only the `0x022B` family is still unreferenced, and one family of five lines
+supports no mechanism.
+
+No ordinal walker exists among the decoder's callers. The only counted terminator loop is
+`0x8008FCAC`, which returns a **character** count for display width and stops at the first
+terminator.
+
 ## 10. Unknowns
 
 The edges are part of the map. None of these is claimed to be understood.
@@ -918,9 +951,13 @@ A **text reference** is one 32-bit word, and its sign decides everything:
 | non-negative, otherwise | `(text id << 20) \| bit offset from the block base` |
 
 The dispatch is exact rather than heuristic. The packed result puts `bitpos` (0 to 7) in bits 28
-to 31, so bit 31 is always clear, while every PSX RAM pointer has it set. `0x8008F3BC` is the
-character cursor that dispatches on it: `bgez t1` selects the Shift-JIS path, otherwise the
-packed path.
+to 31, so bit 31 is always clear, while every PSX RAM pointer has it set. `0x8008F3BC` dispatches
+on it: `bgez t1` selects the Shift-JIS path, otherwise the packed path.
+
+`0x8008F3BC` is **one function of 253 instructions**, `0x8008F3BC` to its only `jr ra` at
+`0x8008F7A8`. It is both the cursor and the Huffman decoder; the dual-base walk is at
+`0x8008F550-0x8008F568` inside it (section 4). Do not describe it as a cursor *instead of* a
+decoder.
 
 ### Where direct-form words live
 
@@ -994,3 +1031,75 @@ in it has a known referrer:
 **264 of 925** is the operative figure, against a per-string 67.41%. Measuring coverage per
 string overstates the position by more than a factor of two, because the unreferenced strings are
 spread thinly across many blocks rather than concentrated in a few.
+
+---
+
+## 14. The three referrer systems, and record extents
+
+MEASURED, Phase 12. All three carry the same 32-bit word,
+`(text id << 20) | bit offset from the block base` (section 13). They differ only in where the
+word sits.
+
+| System | Location | References | Discriminator |
+|---|---|---:|---|
+| 1 | tail record tables in type 40/42 blocks | 9,371 | 100.00% on a string start |
+| 2 | **type 26**, word 0 of each 60-byte record | 955 | 98.28% trimmed |
+| 3 | **type 44**, roster tables at an 8-byte stride | 1,539 | concentration, 13 ids vs 63 to 68 shuffled |
+
+Mutual overlap is 1 reference in total. Union **11,864**, of which 11,856 are non-empty:
+**77.40% of the 15,318 non-empty strings**.
+
+### Extent matters more than the reading
+
+Sweeping a whole sub-block and rating the words whose top 12 bits happen to be a valid text id
+**understates the hit rate and does not change coverage**. For type 26 the whole-sub-block rate is
+43.45% and the correctly-scoped rate is 98.28%; both yield the same 955 references.
+
+**Find the record stride before quoting a rate.** For type 26 the stride is confirmed without
+touching the corpus: all 454 distinct sub-blocks are an exact multiple of 60 bytes, and word
+residues 3 through 11 never hold a valid text id in any of the 2,425 records.
+
+| type 26 residue | hit | miss | invalid id | rate |
+|---:|---:|---:|---:|---:|
+| **0** | 1,261 | 12 | 1,152 | **99.06%** |
+| 1 | 44 | 10 | 2,371 | 81.48% |
+| 2 | 8 | 1 | 2,416 | 88.89% |
+| 3 to 11 | 0 | 0 | 2,425 each | - |
+| 12 to 14 | 0 | 1,686 | - | 0.00% |
+
+Residues 1 and 2 carry a reference in only 54 and 9 records but hit at 81% and 89% when they do,
+so they are genuine and sparse.
+
+### When the absolute rate is not the discriminator
+
+Type 44 sub-blocks are large (up to 340 KB) and mostly other data, so its references rate only
+1.71% against a shuffled 0.15%. The rate is not what settles it. **Concentration is**: the real
+data names 13 text ids, a shuffled control of the same bytes names 63 to 68. Noise spreads across
+the id space, a pointer table does not.
+
+Its plus and minus one bit companions fall to 0.01%, a hundredfold collapse, and 98.0% of hits
+land in `[c, e)`.
+
+Type 44 references, resolved: id `0x0021` 1,086 of 1,086 strings, `0x0022` 7 of 7, `0x0020` 380
+of 395, `0x0026` 55 of 59. The dominant sub-block holds an 8-byte-stride roster whose consecutive
+records resolve to consecutive string indices, `なし`, `ラスタ`, `ゴルエイ`, `セシル`.
+
+### Coverage, and why the per-block figure is the operative one
+
+Bit offsets are absolute from the block base, so changing one string's encoded length shifts every
+later string in its block. A block is accountable only if **every** string in it is accounted for.
+
+| Basis, non-empty strings | Blocks | Complete | At least one unaccounted |
+|---|---:|---:|---:|
+| all blocks | 1,106 | 268 | 838 |
+| **excluding 181 dummy blocks** | **925** | **266** | **659** |
+| excluding dummy and 285 wholly-unreferenced ids | 819 | 266 | 553 |
+
+**266 of 925.** Per-string coverage rose from 67.41% to 77.40% between Phase 11 and Phase 12 and
+the per-block count moved from 264 to 266. **The two measures are close to independent**, because
+new references tend to land in blocks that are already complete or already empty. Quote the
+per-block figure when the question is what can be edited.
+
+3,462 non-empty strings remain unaccounted: 1,330 in the 285 wholly-unreferenced ids, and 2,132
+scattered inside otherwise-referenced blocks. Scattered misses are the signature of a system not
+yet found, and three such systems have now been found the same way, by locating a record stride.
