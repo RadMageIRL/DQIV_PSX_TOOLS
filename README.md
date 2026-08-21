@@ -54,7 +54,7 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Thirty four gates cover source and output integrity, the block scan, the sub-block
+Thirty eight gates cover source and output integrity, the block scan, the sub-block
 census, the text header invariants, a known-good decode, a byte-exact round trip, the
 dictionary, the sector table, the control code census, the atlas geometry, LZS
 decompression, the STR video band, a MIPS disassembler round trip, the four referrer
