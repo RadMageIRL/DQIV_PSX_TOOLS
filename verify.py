@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs
 from dq4 import corpus as corpusmod
+from dq4 import mips
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -288,6 +289,54 @@ def main():
              "%d / %d sane, %s, %d frames, %d streams"
              % (sane, len(vrows), sorted(dims), frames, streams),
              "26635 / 26635, [(128, 120)], 5327 frames, 40 streams")
+
+    # 23 to 26  MIPS disassembler
+    if exe:
+        load, entry_pc, tsize, toff = mips.exe_mapping(exe)
+        tot = dec = rtok = 0
+        histo = collections.Counter()
+        jal_t = collections.Counter()
+        wmap = {}
+        for va, w in mips.iter_words(exe, load, toff, tsize):
+            wmap[va] = w
+            tot += 1
+            t = mips.dis(w, va)
+            if t is None:
+                continue
+            dec += 1
+            histo[t.split()[0]] += 1
+            if t.startswith("jal 0x"):
+                jal_t[int(t.split()[1], 16)] += 1
+            try:
+                if mips.asm(t, va) == w:
+                    rtok += 1
+            except Exception:
+                pass
+        rep.gate(23, "MIPS decode round trip", rtok == dec,
+                 "%d / %d decodable" % (rtok, dec), "all decodable words")
+
+        core = sum(histo[m] for m in ("lw", "sw", "addiu", "jal", "nop",
+                                      "beq", "bne", "lui", "addu", "or"))
+        share = 100.0 * core / dec
+        rep.gate(24, "instruction histogram is MIPS-shaped", share > 50.0,
+                 "core-10 share %.1f%%, top %s" % (share, histo.most_common(1)[0][0]),
+                 "core-10 share > 50%")
+
+        head = [t for _, _, t in mips.disasm_range(exe, load, entry_pc, 24)]
+        entry_ok = any(t and t.startswith("lui gp,") for t in head) and             any(t and t.startswith(("j 0x", "jal 0x")) for t in head)
+        rep.gate(25, "entry point looks like an entry", entry_ok,
+                 "gp setup and a jump present" if entry_ok else "no gp setup or jump",
+                 "gp setup plus jump into main")
+
+        intext = [t for t in jal_t if load <= t < load + tsize]
+        pre = sum(1 for t in intext if mips.dis(wmap.get(t - 8, 0), t - 8) == "jr ra")
+        frac = 100.0 * pre / max(1, len(intext))
+        rep.gate(26, "jal targets are function starts", frac >= 80.0,
+                 "%d targets in text, %.1f%% after 'jr ra'" % (len(intext), frac),
+                 ">= 80% preceded by 'jr ra'")
+    else:
+        for g in (23, 24, 25, 26):
+            print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
 
     # 22  corpus roll-up
     if args.corpus_out:

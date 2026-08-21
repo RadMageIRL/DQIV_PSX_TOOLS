@@ -188,6 +188,13 @@ Every boundary is derived from the header. The map closes with no gap. MEASURED,
 
 `base` equals `e + 10` in all 1,528 blocks. MEASURED, Phase 2.
 
+The engine reads this header at 0x8008F214 and resolves it into a resident 12-slot table of
+32-byte structs at 0x80100168: `lw` at `e+0` is the base offset, `lw` at `e+4` the mid offset,
+`lhu` at `e+8` the root, and each offset is added to the block's RAM base. The sixth header int
+is loaded at 0x8008F250, zero-checked, and resolved the same way, which is the dictionary
+pointer behaving exactly as measured. At most **12 text blocks are resident at once**.
+MEASURED, Phase 9.
+
 ### Text ids
 
 Ids span 0x0020 to 0x0482. 1,106 are distinct. 181 ids carry only placeholder blocks whose
@@ -213,6 +220,15 @@ MEASURED, Phase 1.
 
 Traversal starts at node number `root`, the u16 at `e + 8`. Bit 0 selects `pair[NN]`, bit 1
 selects `pair[m + NN]`. Bits are read **LSB first** within each byte. MEASURED, gate 7.
+
+**Confirmed against the machine code.** The decoder at 0x8008F3BC holds the two bases in
+separate registers, loaded from a resident 32-byte struct, and selects between them on a bit
+test: `beq` on the masked stream bit falls through to `addu v0,v0,a2` (base) or branches to
+`addu v0,v0,v1` (mid), in both cases after `sll v0,v0,1` to scale the node number to 16-bit
+entries. The node test is `sltu` against 0x7FFF, which is `value >= 0x8000` and not a high-byte
+comparison. The bit position counts up from 0 to 7 before advancing the byte pointer, which is
+LSB first. Leaves are offset by `ori s1,s1,-32768`, and the 0x0000 terminator is explicitly
+excluded from that. MEASURED, Phase 9.
 
 ### Entry decode
 
@@ -513,9 +529,13 @@ The `value` field is **not** a bit offset into the block's Huffman stream. Teste
 corpus, it lands on a string start 0.51% of the time and on any symbol boundary 15.8% of the
 time, against a random baseline of 15.9%. Semantics UNKNOWN.
 
-The 0xFFF sentinel matches the `FFF0` in the documented `C021A0 <FFF0> <key>` lookup command,
-which makes this table the obvious thing such a key would index. That correspondence is
-suggestive and unconfirmed: INFERRED.
+The 0xFFF sentinel matches the `FFF0` in the documented `C021A0 <FFF0> <key>` lookup command.
+**The engine code confirms the sentinel and the table are the same mechanism.** The routine at
+0x8008F280 is the only site in the executable that shifts a value right by 20 and compares it
+against 4095; on a match it walks the resident struct table, reads header word 0 (`a`), rounds
+it up to a multiple of 4, and adds it to the block base, which is exactly where the tail
+records live. MEASURED, Phase 9. What the routine returns, and therefore what the `key` selects,
+was located but not followed: UNKNOWN.
 
 **The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
 tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
