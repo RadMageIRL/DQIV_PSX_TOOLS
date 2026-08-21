@@ -524,12 +524,30 @@ def main():
 
     # 22  corpus roll-up
     if args.corpus_out:
-        roll, *_ = corpusmod.build(args.dq4, args.corpus_out)
+        built = corpusmod.build(args.dq4, args.corpus_out)
+        roll = built["rollup"]
         rep.gate(22, "corpus roll-up hash", roll == corpusmod.ROLLUP_EXPECTED,
                  roll[:16] + "...", corpusmod.ROLLUP_EXPECTED[:16] + "...")
+
+        # 33  the executable-resident subtree hashes separately, so a moved archive
+        # roll-up still means exactly one thing.
+        eroll = built["exe_rollup"]
+        rep.gate(33, "corpus exe subtree roll-up",
+                 eroll == corpusmod.EXE_ROLLUP_EXPECTED,
+                 "%s... %d blocks, %d strings"
+                 % (eroll[:16], built["exe"]["blocks"], built["exe"]["strings"]),
+                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 2 blocks, 779 strings")
+
+        # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
+        # per-block figure. If the generator and the phase report disagree, one of
+        # them is wrong and a matching roll-up would hide it.
+        rep.gate(34, "per-block editability matches Phase 12  (COMPANION)",
+                 built["clean_nd"] == 266 and built["total_nd"] == 925,
+                 "%d CLEAN of %d non-dummy blocks, %d chars CLEAN"
+                 % (built["clean_nd"], built["total_nd"], built["chars_clean"]),
+                 "266 CLEAN of 925 non-dummy")
     else:
-        print("  SKIP gate 22  corpus roll-up hash                          "
-              "pass --corpus-out <dir> to run it")
+        print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
 
     return 0 if rep.summary() else 1
 

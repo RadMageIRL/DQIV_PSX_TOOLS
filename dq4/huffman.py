@@ -186,17 +186,27 @@ def split_strings(symbols):
     return out, cur
 
 def string_starts(tb):
-    """Bit offsets, relative to c, at which each string begins.
+    """Set of bit offsets, relative to c, at which each string begins.
+
+    Thin wrapper over string_offsets for callers that only ask whether a
+    reference lands on a boundary.
+    """
+    return set(string_offsets(tb))
+
+
+def string_offsets(tb):
+    """Bit offsets, relative to c, at which each string begins, in order.
 
     Offset 0 is always the first string; every entry after that is the bit
-    following an END symbol. Returns a set, because the only thing callers do
-    with it is ask whether a reference lands on a string boundary.
+    following an END symbol. The final entry is the position after the last
+    END, which begins the trailing residue rather than a string, so index i
+    is a real string only while i < the block's string count.
     """
     raw = tb.raw
     tree = HuffmanTree(tb)
     nn = tree.root
     pos, bit, nb = tb.c, 0, 0
-    starts = {0}
+    starts = [0]
     while pos < tb.e:
         b = (raw[pos] >> bit) & 1
         bit += 1
@@ -213,5 +223,5 @@ def string_starts(tb):
         else:
             nn = tree.root
             if kind == END:
-                starts.add(nb)
+                starts.append(nb)
     return starts

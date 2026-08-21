@@ -1049,6 +1049,11 @@ word sits.
 Mutual overlap is 1 reference in total. Union **11,864**, of which 11,856 are non-empty:
 **77.40% of the 15,318 non-empty strings**.
 
+The corpus carries this per string as a status field (`LOOKUP`, `TABLE`, `ROSTER`,
+`UNRESOLVED`, `EMPTY`, `DUMMY`) together with the referrer's address, and per block as a
+`CLEAN` or `BLOCKED` verdict in `meta/blockindex.txt`. There is deliberately no `ORDINAL`
+status: none was established, so `UNRESOLVED` covers both possibilities.
+
 ### Extent matters more than the reading
 
 Sweeping a whole sub-block and rating the words whose top 12 bits happen to be a valid text id
