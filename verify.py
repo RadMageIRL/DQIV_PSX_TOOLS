@@ -288,11 +288,21 @@ def main():
             c, p = fonts.cell_plane(e.descriptor)
             if at.plane_ink(c, p):
                 drawn += 1
-        rep.gate(17, "glyph atlas, two glyphs per cell, Latin and digits",
-                 at.slots == 288 and nb == 268 and drawn == 62,
+        # The non-blank COUNT is a property of the pristine atlas, so it is
+        # pinned only on the source disc. A built disc may legitimately draw new
+        # glyphs into blank half-cells. The structural half of the gate, 288
+        # slots and 62 of 62 letters and digits resolving through the game's own
+        # table to a half-cell with ink, is asserted on every disc and is the
+        # part that catches a broken table or a mispacked atlas.
+        ok17 = at.slots == 288 and drawn == 62 and nb >= 268
+        if is_source:
+            ok17 = ok17 and nb == 268
+        rep.gate(17, "glyph atlas, two glyphs per cell, Latin and digits", ok17,
                  "%d slots, %d non-blank, %d of 62 letters and digits drawn"
                  % (at.slots, nb, drawn),
-                 "288 slots, 268 non-blank, 62 of 62 drawn")
+                 "288 slots, 62 of 62 drawn"
+                 + (", 268 non-blank" if is_source
+                    else ", non-blank not pinned off-source (was 268)"))
     else:
         rep.gate(17, "glyph atlas, two glyphs per cell, Latin and digits", False,
                  "atlas or executable not found",
@@ -685,7 +695,7 @@ def main():
                  eroll == corpusmod.EXE_ROLLUP_EXPECTED,
                  "%s... %d blocks, %d strings"
                  % (eroll[:16], built["exe"]["blocks"], built["exe"]["strings"]),
-                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 2 blocks, 779 strings")
+                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 2 blocks, 784 strings")
 
         # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
         # per-block figure. If the generator and the phase report disagree, one of

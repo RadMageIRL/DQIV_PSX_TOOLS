@@ -26,10 +26,53 @@ from . import mips, referrers
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
 # diff the corpus and review before accepting a new value.
-ROLLUP_EXPECTED = "ced6d48f69ebfe5e93e6b50f8830120588fa88f4c70aef9b12b7e170219945e3"
-EXE_ROLLUP_EXPECTED = "fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2"
+# MOVED DELIBERATELY, Phase 33, after a line-by-line manifest review.
+# Previous: ced6d48f69ebfe5e93e6b50f8830120588fa88f4c70aef9b12b7e170219945e3
+#           fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2
+# Four rows changed, none added, none removed. Cause: text block 0x048D has
+# e == 0, carries no Huffman tree, and is raw NULL-terminated Shift-JIS. It was
+# reported as zero strings for thirty-two phases. It holds five strings and 80
+# characters: the fullwidth Latin alphabets and the digit and hex sets. The
+# archive roll-up moves for exactly one reason, dq4-side-by-side.txt, which
+# lists every string including the executable ones.
+ROLLUP_EXPECTED = "5d40cd227973ae70011eb834c1edfb916041847b1084d8d1bcb78c8d0a2f1c41"
+EXE_ROLLUP_EXPECTED = "5f88b66228987cd9392fbb23592b8ff4b19933a9edd0900debb9d1e22b0090b2"
 
 DUMMY_MARK = "ダミー"          # katakana damii
+NUL = bytes([0])
+
+
+def raw_sjis_strings(raw, start, end):
+    """[str] NULL-terminated Shift-JIS strings in [start, end).
+
+    Used for text blocks with e == 0, which carry no Huffman tree. Block 0x048D
+    is the only one: five strings, 80 characters, the fullwidth Latin alphabets
+    and digit sets. It read as empty until Phase 33 because the generator only
+    knew how to walk a tree.
+    """
+    out = []
+    i = start
+    while i < end:
+        j = raw.find(NUL, i, end)
+        if j < 0:
+            j = end
+        if j > i:
+            try:
+                out.append(raw[i:j].decode("shift_jis"))
+            except UnicodeDecodeError:
+                pass
+        i = j + 1
+    return out
+
+
+def _sjis_codes(text):
+    """[int] the two-byte Shift-JIS code for each character of text."""
+    out = []
+    for ch in text:
+        b = ch.encode("shift_jis")
+        if len(b) == 2:
+            out.append((b[0] << 8) | b[1])
+    return out
 DUMMY, EMPTY, CONTROL, UNRESOLVED = "DUMMY", "EMPTY", "CONTROL", "UNRESOLVED"
 
 # Phase 12 did not establish ordinal addressing for any string, so there is no
@@ -475,12 +518,23 @@ def build(disc_path, out_dir):
             eindex[tb.id] = (tb, offs, {o: i for i, o in enumerate(offs)})
         erefs = referrers.exe_refs(exe, load, toff, tsize, eindex)
         for va, tb in eblocks:
-            tree = huffman.HuffmanTree(tb)
-            syms = tree.decode()
-            entries = dictionary.parse(tb.raw, tb)
-            expanded, _unres = dictionary.expand(syms, entries)
-            rstr, rtail = huffman.split_strings(syms)
-            estr, etail = huffman.split_strings(expanded)
+            if tb.e == 0:
+                # A text block with e == 0 carries NO Huffman tree. Its body is
+                # raw NULL-TERMINATED Shift-JIS. Block 0x048D is the only one on
+                # this disc, and it was reported as empty for thirty-two phases
+                # because this branch did not exist. MEASURED, Phase 33.
+                syms = []
+                rstr = [[(huffman.SJIS, c) for c in _sjis_codes(s)]
+                        for s in raw_sjis_strings(tb.raw, tb.c, tb.a)]
+                rtail = []
+                estr, etail = list(rstr), []
+            else:
+                tree = huffman.HuffmanTree(tb)
+                syms = tree.decode()
+                entries = dictionary.parse(tb.raw, tb)
+                expanded, _unres = dictionary.expand(syms, entries)
+                rstr, rtail = huffman.split_strings(syms)
+                estr, etail = huffman.split_strings(expanded)
             nm = "%04X" % tb.id
             head = ["# exe text block id %04X at va 0x%08X" % (tb.id, va),
                     "# symbols %d strings %d" % (len(syms), len(rstr))]
@@ -706,7 +760,12 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
              status, clean, clean_nd, total_nd, chars_clean, chars_blocked,
              ph_cross, exe_stats, ed_strings, ed_chars):
     files = []
-    for root, _, names in os.walk(out_dir):
+    for root, dirs, names in os.walk(out_dir):
+        # editorial/ holds HAND-AUTHORED work: the voice sheet, the name glossary,
+        # English columns filled in over months. It must never enter the roll-up.
+        # The roll-up answers "did the decoder change", and editing prose must not
+        # be able to move it. Phase 33 caught it entering by accident.
+        dirs[:] = [x for x in dirs if x != "editorial"]
         for n in sorted(names):
             if n.startswith("MANIFEST"):
                 continue

@@ -9,17 +9,23 @@ that writes a modified copy of a disc image, and it never writes to the source.
 
 **No game data ships here.** You supply your own disc image.
 
-**English text renders in-game from a disc built by this library.**
+**A whole scene renders in English from a disc built by this library.**
+
+![A message box reading Cynthia, Oh, then the player name, Sword practice is over already?](docs/images/english-scene-cynthia.png)
+
+All eleven strings of text id 0x006C, the opening scene, translated and built by this
+tooling, across 29 message boxes against the Japanese script's 21. Capitals, lowercase,
+digits and punctuation all render, the letters are drawn from both 2-bit planes of the
+atlas mixed inside the same word, and the player-entered name substitutes correctly
+through the `0x7F1F` code, which is why a kana name sits inside an English line here: the
+name entry screen has not been translated yet. Verified on hardware-accurate emulation
+(DuckStation) on 2026-08-21.
+
+The two earlier single-line proofs are still here:
 
 ![The first message box, reading Cynthia then English exclamation mark, then ABCD abcd 0123](docs/images/english-line-box1.png)
 
 ![The second message box, reading Cynthia then It works](docs/images/english-line-box2.png)
-
-Text id 0x006C string 5, in the opening scene, replaced with fullwidth Latin and built
-by this tooling. Capitals, lowercase, digits and punctuation all render, and the
-letters are drawn from both 2-bit planes of the atlas, mixed inside the same word.
-Verified on hardware-accurate emulation (DuckStation) on 2026-08-21. Surrounding lines
-are unmodified and the scene plays in order.
 
 No new glyphs and no font table changes were needed: the letters were already in the
 game, and finding them meant correcting a published negative result of our own that

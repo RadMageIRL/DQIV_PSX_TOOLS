@@ -1551,6 +1551,39 @@ overrun from +3 to +6 or +21, which gate 20 rejects.
 
 ---
 
+## 15b. What the corpus does NOT contain
+
+The corpus decodes every Huffman text block on the disc. That is not the whole script, and the
+claim that it is has been overstated. MEASURED, Phases 32 and 33:
+
+| population | characters | in the corpus |
+|---|---:|---|
+| Huffman text blocks, types 40 and 42 | 668,447 | yes |
+| type 46 string pools: arena, shops, church, memory card | 110,646 | **no** |
+| types 6, 44, 8 and others | 24,561 | **no** |
+| loose Shift-JIS in `SLPM_869.16` | 573 | **no** |
+| block 0x048D, raw Shift-JIS with `e == 0` | 80 | **yes, since Phase 33** |
+| the global monster bestiary | unknown | **not located** |
+
+**At least 20.2 percent more text exists outside the text blocks than inside them.** The figure
+is a floor: it counts only runs of valid two-byte Shift-JIS whose kana density is 0.6 or higher.
+Without that filter the same sweep returns 1.26 million characters, because compressed graphics
+and audio produce valid Shift-JIS byte pairs by chance.
+
+**A text block with `e == 0` carries no Huffman tree.** Its body is raw NULL-terminated
+Shift-JIS. Exactly one exists, 0x048D at VA `0x800B0C5C`, holding the fullwidth Latin alphabets
+and the digit and hex sets, and it read as empty for thirty-two phases because the generator
+only knew how to walk a tree.
+
+**The monster bestiary is not on this disc as Shift-JIS.** MEASURED three ways: eleven of twelve
+common monster names appear nowhere as Shift-JIS bytes in the executable, the raw archive, or any
+of 5,821 decompressed LZS sub-blocks; the six-u32 structural test over all 23,828 sub-blocks
+finds no text block outside types 40 and 42; and the names are not stored as font descriptors
+either, with `スライム` as the control that confirms the search works. What remains untried is a
+non-LZS compression, a Huffman tree inside a type 46 overlay, and the 26,635-sector STR band.
+
+---
+
 ## 16. On gates
 
 The most transferable thing in this repository is not a format detail. It is this.
