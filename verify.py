@@ -576,6 +576,18 @@ def main():
                  % (built["clean_nd"], built["total_nd"], built["chars_clean"],
                     built["chars_clean_dummy"]),
                  "266 CLEAN of 925 non-dummy, 139192 chars + 543 dummy")
+
+        # 36  the suffix rule. A string is editable exactly when no unresolved
+        # string sits after it, so the editable set is the suffix from the last
+        # unresolved index. Asserted because it is the operative figure and it is
+        # derived from the referrer map rather than the lossy status column.
+        rep.gate(36, "suffix-rule editability, non-dummy blocks",
+                 built["ed_strings"][0] == 11437
+                 and built["ed_chars"][0] == 488490
+                 and built["ed_chars"][1] == 179414,
+                 "%d editable strings, %d editable chars, %d frozen"
+                 % (built["ed_strings"][0], built["ed_chars"][0], built["ed_chars"][1]),
+                 "11437 strings, 488490 chars editable, 179414 frozen")
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
 

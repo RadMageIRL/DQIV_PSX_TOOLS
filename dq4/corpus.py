@@ -26,7 +26,7 @@ from . import mips, referrers
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
 # diff the corpus and review before accepting a new value.
-ROLLUP_EXPECTED = "94e894dacfc3ff6ed53d59300f591c1038a90290502e6426bc17e55a31566371"
+ROLLUP_EXPECTED = "0654916270fe1e949852f4511e8b2802fff07964e8c3c0b9463a8210c70a1103"
 EXE_ROLLUP_EXPECTED = "fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2"
 
 DUMMY_MARK = "ダミー"          # katakana damii
@@ -165,6 +165,8 @@ def build(disc_path, out_dir):
     block_rows = []
     placeholders = []
     ph_cross = collections.Counter()
+    ed_chars = [0, 0]         # [editable, frozen], non-dummy only
+    ed_strings = [0, 0]
     chars_clean = [0, 0]      # [non-dummy, dummy]
     chars_blocked = [0, 0]
     total_chars = 0
@@ -234,6 +236,27 @@ def build(disc_path, out_dir):
                 counts[status] += 1
                 rows.append((i, text, nchar, status, where, st,
                              strbits[i] if i < len(strbits) else 0))
+            # THE SUFFIX RULE. Offsets are absolute from the block base, so
+            # lengthening string i shifts i+1..N-1 and nothing before i. String i
+            # itself never moves, so its own referrer is never invalidated.
+            # Therefore a string is editable exactly when no unresolved string sits
+            # AFTER it, and the whole suffix from the LAST unresolved index onward
+            # is editable, that index included.
+            #
+            # Read from the referrer map, not the status column: DUMMY takes
+            # precedence in the status field and would mask an unresolved string.
+            # A zero-symbol string cannot change length, so it is never a barrier.
+            unres = [r[0] for r in rows
+                     if not refs.get((tid, r[0]))
+                     and (r[2] or sum(1 for k, _v in r[5] if k == huffman.CTRL))]
+            uk = max(unres) if unres else None
+            N = len(rows)
+            if uk is None:
+                resolution = "RESOLVED"
+            elif uk >= N - 1:
+                resolution = "TAIL-ONLY"
+            else:
+                resolution = "CUTOFF"
             blocked = any(st == UNRESOLVED for _i, _t, n, st, _w, _s, _b in rows if n)
             edit = "BLOCKED" if blocked else "CLEAN"
             # "wholly unreferenced" means the block HAS non-empty strings and none
@@ -248,15 +271,20 @@ def build(disc_path, out_dir):
             wholly = bool(ne_rows) and not any(refs.get((tid, r[0])) for r in ne_rows)
             block_rows.append((tid, suffix, sector, sub, b, counts, edit,
                                wholly, is_dummy, region_bits, consumed_bits,
-                               residue_bits))
+                               residue_bits, uk, resolution, N))
 
             for i, text, nchar, status, where, st, nbits in rows:
                 head = ("[id %04X / str %02d / sector %d / sub %d]"
                         % (tid, i, sector, sub["idx"]))
                 subs = sorted({v for k, v in st
                                if k == huffman.CTRL and v in CTRL_RANGE_SUB})
-                rec = [head, "STATUS: %s%s  BLOCK: %s%s"
-                       % (status, where, edit, "  (dummy-only block)" if is_dummy else "")]
+                editable = uk is None or i >= uk
+                rec = [head,
+                       "STATUS: %s%s" % (status, where),
+                       "EDITABLE: %s  BLOCK: %s%s%s"
+                       % ("yes" if editable else "no", resolution,
+                          "" if uk is None else " uk=%d of N=%d" % (uk, N),
+                          "  (dummy-only block)" if is_dummy else "")]
                 # omitted entirely when the string carries none, so the file stays
                 # scannable
                 if subs:
@@ -265,12 +293,19 @@ def build(disc_path, out_dir):
                                            "  (%.2f per displayed character)"
                                            % (nbits / nchar)))
                 rec += ["JP: %s" % text, "EN:", "NOTE:", ""]
-                side_rows.append((0 if edit == "CLEAN" else 1, tid, i, rec))
+                side_rows.append((0 if editable else 1, tid, i, rec))
                 # Dummy blocks are trivially CLEAN, so every CLEAN total is split
                 # into real and dummy. Reporting only the combined figure inflates
                 # it, which is exactly what happened to the published 139,735.
                 bucket = chars_clean if edit == "CLEAN" else chars_blocked
                 bucket[1 if is_dummy else 0] += nchar
+                if not is_dummy:
+                    if editable:
+                        ed_chars[0] += nchar
+                        ed_strings[0] += 1
+                    else:
+                        ed_chars[1] += nchar
+                        ed_strings[1] += 1
                 if subs:
                     placeholders.append(head)
                     placeholders.append("STATUS: %s  BLOCK: %s" % (status, edit))
@@ -329,6 +364,12 @@ def build(disc_path, out_dir):
         "# unit of safety is the block and not the string.",
         "#",
         "#",
+        "# THE SUFFIX RULE. Lengthening string i shifts i+1..N-1 and nothing before",
+        "# it, so a string is editable exactly when no unresolved string sits after",
+        "# it. uk is the last unresolved index; every string from uk onward is",
+        "# editable, uk included. resolution is RESOLVED (uk none), CUTOFF (a suffix",
+        "# is editable) or TAIL-ONLY (uk = N-1, only the final string).",
+        "#",
         "# A dummy-only block is trivially CLEAN because it holds nothing unresolved.",
         "# 447 blocks are CLEAN, of which 181 are dummy-only; 266 CLEAN non-dummy.",
         "# Quote the non-dummy figure when the question is what can be edited.",
@@ -340,21 +381,24 @@ def build(disc_path, out_dir):
         "# text id | sector | sub | type | dlen | symbols | strings | non-empty"
         " | LOOKUP | TABLE | ROSTER | UNRESOLVED | EMPTY | DUMMY"
         " | region bits | consumed bits | residue bits | editability"
-        " | dummy-only | wholly unreferenced | duplicate sectors",
+        " | uk | resolution | editable strings | dummy-only"
+        " | wholly unreferenced | duplicate sectors",
     ]
     for (tid, suffix, sector, sub, b, counts, edit, wholly, is_dummy,
-         region_bits, consumed_bits, residue_bits) in block_rows:
+         region_bits, consumed_bits, residue_bits, uk, resolution, N) in block_rows:
         name = "%04X%s" % (tid, suffix)
         ne = sum(v for k, v in counts.items() if k not in (EMPTY,))
         index_lines.append(
             "%04X%s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d"
-            " | %d | %d | %d | %s | %s | %s | %s"
+            " | %d | %d | %d | %s | %s | %s | %d | %s | %s | %s"
             % (tid, suffix, sector, sub["idx"], sub["type"], sub["dlen"],
                len(b.symbols), len(b.raw_strings), ne,
                counts.get(referrers.LOOKUP, 0), counts.get(referrers.TABLE, 0),
                counts.get(referrers.ROSTER, 0), counts.get(UNRESOLVED, 0),
                counts.get(EMPTY, 0), counts.get(DUMMY, 0),
                region_bits, consumed_bits, residue_bits, edit,
+               "none" if uk is None else str(uk), resolution,
+               N if uk is None else N - uk,
                "yes" if is_dummy else "no",
                "yes" if wholly else "no", dup_by_name.get(name, "-")))
     write(os.path.join(out_dir, "meta", "blockindex.txt"), index_lines)
@@ -499,9 +543,20 @@ def build(disc_path, out_dir):
         "# DQ4 side-by-side. EN and NOTE are intentionally empty; nothing here is",
         "# translated.",
         "#",
-        "# ORDER: CLEAN blocks first, then BLOCKED, then executable-resident blocks.",
-        "# Within each, by text id then string index. The safely editable material is",
-        "# at the top.",
+        "# ORDER: EDITABLE strings first, then frozen, then executable-resident",
+        "# blocks. Within each group, by text id then string index.",
+        "#",
+        "# THE SUFFIX RULE, and why a partly-unresolved block still has editable text.",
+        "#   Offsets are absolute from the block base, so lengthening string i shifts",
+        "#   strings i+1..N-1 and nothing before i. String i itself does not move, so",
+        "#   its own referrer never needs updating. A string is therefore editable",
+        "#   exactly when NO unresolved string appears after it: the whole suffix from",
+        "#   the last unresolved index uk onward is editable, uk included.",
+        "#",
+        "#   EDITABLE is that per-string verdict. BLOCK reports the block's shape:",
+        "#   RESOLVED (nothing unresolved), CUTOFF uk=i of N=n (the suffix from i is",
+        "#   editable), or TAIL-ONLY (uk = N-1, only the final string). BLOCK is not",
+        "#   an editability verdict and does not contradict EDITABLE.",
         "#",
         "# SOURCE COVERAGE",
         "#   archive HBD1PS1D.Q41, all %d distinct text ids, ids 0x0020 to 0x0482" % nids_seen,
@@ -527,6 +582,12 @@ def build(disc_path, out_dir):
         "#   %d strings are CONTROL: zero displayed characters but at least one" % n_control,
         "#   control code, so they encode something and occupy real bits. Both are",
         "#   present; neither is filtered out.",
+        "#",
+        "# WHAT THE SUFFIX RULE DOES NOT CHANGE",
+        "#   A frozen prefix still cannot grow. Those lines stay Japanese unless a",
+        "#   further referrer system is found. Phase 13 stands: English does not fit",
+        "#   the original bit budget, so every edited string does move what follows",
+        "#   it. The wholly-unreferenced ids remain effectively closed.",
         "#",
         "# BLOCK COUNTS, BOTH BASES",
         "#   %d CLEAN blocks, of which %d are dummy-only;" % (n_clean, n_clean - n_clean_nd),
@@ -558,7 +619,8 @@ def build(disc_path, out_dir):
 
     rollup, exe_rollup, nfiles = manifest(out_dir, len(by_id), total_chars, str_lengths, variants,
                               status_totals, clean, clean_nd, total_nd,
-                              chars_clean, chars_blocked, ph_cross, exe_stats)
+                              chars_clean, chars_blocked, ph_cross, exe_stats,
+                              ed_strings, ed_chars)
     return dict(rollup=rollup, exe_rollup=exe_rollup, nfiles=nfiles, nids=len(by_id), chars=total_chars,
                 lengths=str_lengths, variants=variants,
                 records=len(side_rows), placeholders=len(placeholders) // 4,
@@ -566,6 +628,7 @@ def build(disc_path, out_dir):
                 total_nd=total_nd, chars_clean=chars_clean[0],
                 chars_clean_dummy=chars_clean[1],
                 chars_blocked=chars_blocked[0], ph_cross=ph_cross, exe=exe_stats,
+                ed_strings=ed_strings, ed_chars=ed_chars,
                 blocks=block_rows)
 
 
@@ -639,7 +702,7 @@ def voice_sheet(ctrl):
 
 def manifest(out_dir, nids, total_chars, str_lengths, variants,
              status, clean, clean_nd, total_nd, chars_clean, chars_blocked,
-             ph_cross, exe_stats):
+             ph_cross, exe_stats, ed_strings, ed_chars):
     files = []
     for root, _, names in os.walk(out_dir):
         for n in sorted(names):
@@ -739,6 +802,19 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
         % chars_clean[0],
         "| displayed characters in dummy-only blocks | %d |" % chars_clean[1],
         "| displayed characters in BLOCKED blocks | %d |" % chars_blocked[0],
+        "",
+        "## Editable under the suffix rule, non-dummy blocks",
+        "",
+        "Lengthening string i shifts i+1..N-1 and nothing before it, so a string is",
+        "editable exactly when no unresolved string sits after it. The whole suffix from",
+        "the last unresolved index is editable, that index included.",
+        "",
+        "| Metric | Value |",
+        "|---|---:|",
+        "| **editable strings** | **%d of %d** |" % (ed_strings[0], ed_strings[0] + ed_strings[1]),
+        "| **editable displayed characters** | **%d of %d** |"
+        % (ed_chars[0], ed_chars[0] + ed_chars[1]),
+        "| frozen displayed characters | %d |" % ed_chars[1],
         "| substitution-bearing strings in CLEAN non-dummy blocks | %d |"
         % ph_cross.get(("CLEAN", "real"), 0),
         "| substitution-bearing strings in BLOCKED blocks | %d |"
@@ -788,6 +864,8 @@ def main(argv=None):
     print("  blocks CLEAN          %d of %d non-dummy" % (r["clean_nd"], r["total_nd"]))
     print("  characters CLEAN      %d   BLOCKED %d"
           % (r["chars_clean"], r["chars_blocked"]))
+    print("  EDITABLE (suffix rule) %d strings, %d characters; frozen %d characters"
+          % (r["ed_strings"][0], r["ed_chars"][0], r["ed_chars"][1]))
     print("  exe blocks            %d, %d strings, %d characters, %d referenced"
           % (r["exe"]["blocks"], r["exe"]["strings"], r["exe"]["chars"],
              r["exe"]["referenced"]))

@@ -837,6 +837,45 @@ pad count**, which counted bits after the last decodable symbol rather than afte
 Bits per non-empty string: min 9, median 272, p90 573, max 5,331. Bits per displayed character:
 median 7.39.
 
+### The suffix rule: which strings can be re-encoded
+
+MEASURED by computation, Phase 14, gate 36.
+
+Offsets are absolute from the block base, so lengthening string i shifts strings i+1 through
+N-1 and **nothing before i**. String i itself does not move, so its own referrer is never
+invalidated. Therefore:
+
+> **A string is editable if and only if no unresolved string appears after it in its block.**
+
+If a block's unresolved strings sit at indices `{u1 < ... < uk}`, every string from `uk` onward
+is editable, `uk` included, and everything before `uk` is frozen. The operative question is where
+the maximum sits, not whether the set is empty.
+
+| Basis | editable strings | editable characters |
+|---|---:|---:|
+| whole-block rule (Phase 12) | 3,112 | 139,192 |
+| **suffix rule (Phase 14)** | **11,437 of 15,243** | **488,490 of 667,904, 73.14%** |
+
+**A zero-symbol string is never a barrier**: it encodes nothing, so it cannot grow. A
+control-only string is a barrier in principle, because its codes are real encoded symbols; the
+two on this disc (13 and 15 bits) never set a cutoff, so both bases give identical totals.
+
+Unresolved strings **cluster at low indices**, which is why the rule pays. 67.1% of the 659
+affected blocks have `uk` in the bottom three tenths against 23.7% for a shuffled control that
+keeps each block's unresolved count; 9.6% in the top three tenths against 43.3% shuffled.
+
+| Population | Blocks | Characters | Editable within |
+|---|---:|---:|---:|
+| fully resolved | 266 | 139,192 | 100.0% |
+| **cutoff** | **531** | **444,615** | **77.5%** |
+| tail-only, `uk = N-1` | 128 | 84,097 | 5.6% |
+
+`meta/blockindex.txt` carries `uk`, `resolution` and `editable strings` per block; the
+side-by-side carries `EDITABLE` per string. **This does not soften section 11b**: English still
+does not fit the original bit budget, so an edited string does move everything after it. The rule
+identifies where that movement is harmless because nothing measured points into the region that
+moves.
+
 ### English does not fit this budget
 
 Phase 13 modeled a Latin-charset tree per block: 72 character symbols plus the block's expanded
