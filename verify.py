@@ -564,11 +564,18 @@ def main():
         # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
         # per-block figure. If the generator and the phase report disagree, one of
         # them is wrong and a matching roll-up would hide it.
+        # chars_clean is the NON-DUMMY figure. Dummy-only blocks are trivially
+        # CLEAN, and counting their 543 characters inflated the published total to
+        # 139,735. Both numbers are asserted so neither basis can drift.
         rep.gate(34, "per-block editability matches Phase 12  (COMPANION)",
-                 built["clean_nd"] == 266 and built["total_nd"] == 925,
-                 "%d CLEAN of %d non-dummy blocks, %d chars CLEAN"
-                 % (built["clean_nd"], built["total_nd"], built["chars_clean"]),
-                 "266 CLEAN of 925 non-dummy")
+                 built["clean_nd"] == 266 and built["total_nd"] == 925
+                 and built["chars_clean"] == 139192
+                 and built["chars_clean_dummy"] == 543,
+                 "%d CLEAN of %d non-dummy blocks, %d chars CLEAN non-dummy"
+                 " + %d in dummy-only blocks"
+                 % (built["clean_nd"], built["total_nd"], built["chars_clean"],
+                    built["chars_clean_dummy"]),
+                 "266 CLEAN of 925 non-dummy, 139192 chars + 543 dummy")
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
 

@@ -26,26 +26,32 @@ from . import mips, referrers
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
 # diff the corpus and review before accepting a new value.
-ROLLUP_EXPECTED = "dad99a93d87b200855e924cdf9295e2871d6d1f3fe0f88344375f3647b3a223a"
+ROLLUP_EXPECTED = "94e894dacfc3ff6ed53d59300f591c1038a90290502e6426bc17e55a31566371"
 EXE_ROLLUP_EXPECTED = "fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2"
 
 DUMMY_MARK = "ダミー"          # katakana damii
-DUMMY, EMPTY, UNRESOLVED = "DUMMY", "EMPTY", "UNRESOLVED"
+DUMMY, EMPTY, CONTROL, UNRESOLVED = "DUMMY", "EMPTY", "CONTROL", "UNRESOLVED"
 
 # Phase 12 did not establish ordinal addressing for any string, so there is no
 # ORDINAL status. Everything with no measured referrer is UNRESOLVED, which
 # covers both "reached by position" and "referrer not yet found" without
 # guessing the split.
 STATUS_ORDER = (referrers.LOOKUP, referrers.TABLE, referrers.ROSTER,
-                UNRESOLVED, EMPTY, DUMMY)
+                UNRESOLVED, CONTROL, EMPTY, DUMMY)
 
 
-def string_status(refs, tid, i, nchar, is_dummy):
-    """(status, ' (where)') for one string."""
+def string_status(refs, tid, i, nchar, nctrl, is_dummy):
+    """(status, ' (where)') for one string.
+
+    EMPTY and CONTROL are both zero displayed characters and are NOT the same
+    thing. EMPTY carries no symbols at all, just the terminator. CONTROL carries
+    at least one control code, so it encodes something and occupies real bits.
+    Exactly 2 strings on the disc are CONTROL and 1,914 are EMPTY.
+    """
     if is_dummy:
         return DUMMY, ""
     if not nchar:
-        return EMPTY, ""
+        return (CONTROL if nctrl else EMPTY), ""
     got = refs.get((tid, i))
     if not got:
         return UNRESOLVED, ""
@@ -150,6 +156,7 @@ def build(disc_path, out_dir):
             if k == huffman.CTRL:
                 ctrl_all[v] += 1
     index = referrers.block_index(arch, blocks)
+    nids_seen = len(index)
     refs = referrers.build(arch, blocks, index)
 
     variants = []
@@ -158,8 +165,8 @@ def build(disc_path, out_dir):
     block_rows = []
     placeholders = []
     ph_cross = collections.Counter()
-    chars_clean = [0]
-    chars_blocked = [0]
+    chars_clean = [0, 0]      # [non-dummy, dummy]
+    chars_blocked = [0, 0]
     total_chars = 0
     str_lengths = []
 
@@ -222,7 +229,8 @@ def build(disc_path, out_dir):
             counts = collections.Counter()
             rows = []
             for i, st, text, nchar in rendered:
-                status, where = string_status(refs, tid, i, nchar, is_dummy)
+                nctrl = sum(1 for k, _v in st if k == huffman.CTRL)
+                status, where = string_status(refs, tid, i, nchar, nctrl, is_dummy)
                 counts[status] += 1
                 rows.append((i, text, nchar, status, where, st,
                              strbits[i] if i < len(strbits) else 0))
@@ -245,23 +253,31 @@ def build(disc_path, out_dir):
             for i, text, nchar, status, where, st, nbits in rows:
                 head = ("[id %04X / str %02d / sector %d / sub %d]"
                         % (tid, i, sector, sub["idx"]))
-                side_rows.append((0 if edit == "CLEAN" else 1, tid, i, [
-                    head,
-                    "STATUS: %s%s  BLOCK: %s" % (status, where, edit),
-                    "BITS: %d%s" % (nbits, ""
-                                    if not nchar else
-                                    "  (%.2f per displayed character)" % (nbits / nchar)),
-                    "JP: %s" % text, "EN:", "NOTE:", ""]))
-                if edit == "CLEAN":
-                    chars_clean[0] += nchar
-                else:
-                    chars_blocked[0] += nchar
-                if any(k == huffman.CTRL and v in CTRL_RANGE_SUB for k, v in st):
+                subs = sorted({v for k, v in st
+                               if k == huffman.CTRL and v in CTRL_RANGE_SUB})
+                rec = [head, "STATUS: %s%s  BLOCK: %s%s"
+                       % (status, where, edit, "  (dummy-only block)" if is_dummy else "")]
+                # omitted entirely when the string carries none, so the file stays
+                # scannable
+                if subs:
+                    rec.append("SUBS: %s" % ", ".join("%04X" % v for v in subs))
+                rec.append("BITS: %d%s" % (nbits, "" if not nchar else
+                                           "  (%.2f per displayed character)"
+                                           % (nbits / nchar)))
+                rec += ["JP: %s" % text, "EN:", "NOTE:", ""]
+                side_rows.append((0 if edit == "CLEAN" else 1, tid, i, rec))
+                # Dummy blocks are trivially CLEAN, so every CLEAN total is split
+                # into real and dummy. Reporting only the combined figure inflates
+                # it, which is exactly what happened to the published 139,735.
+                bucket = chars_clean if edit == "CLEAN" else chars_blocked
+                bucket[1 if is_dummy else 0] += nchar
+                if subs:
                     placeholders.append(head)
                     placeholders.append("STATUS: %s  BLOCK: %s" % (status, edit))
+                    placeholders.append("SUBS: %s" % ", ".join("%04X" % v for v in subs))
                     placeholders.append(text)
                     placeholders.append("")
-                    ph_cross[edit] += 1
+                    ph_cross[(edit, "dummy" if is_dummy else "real")] += 1
 
             for k, v in b.expanded:
                 if k == huffman.CTRL:
@@ -313,6 +329,10 @@ def build(disc_path, out_dir):
         "# unit of safety is the block and not the string.",
         "#",
         "#",
+        "# A dummy-only block is trivially CLEAN because it holds nothing unresolved.",
+        "# 447 blocks are CLEAN, of which 181 are dummy-only; 266 CLEAN non-dummy.",
+        "# Quote the non-dummy figure when the question is what can be edited.",
+        "#",
         "# Bit budget: region bits is (e - c) * 8, the whole code stream. consumed is",
         "# the span to the last END. residue is what follows it, trailing symbols plus",
         "# pad. sum of per-string bits + residue == region, exactly, for every block.",
@@ -320,7 +340,7 @@ def build(disc_path, out_dir):
         "# text id | sector | sub | type | dlen | symbols | strings | non-empty"
         " | LOOKUP | TABLE | ROSTER | UNRESOLVED | EMPTY | DUMMY"
         " | region bits | consumed bits | residue bits | editability"
-        " | wholly unreferenced | duplicate sectors",
+        " | dummy-only | wholly unreferenced | duplicate sectors",
     ]
     for (tid, suffix, sector, sub, b, counts, edit, wholly, is_dummy,
          region_bits, consumed_bits, residue_bits) in block_rows:
@@ -328,14 +348,15 @@ def build(disc_path, out_dir):
         ne = sum(v for k, v in counts.items() if k not in (EMPTY,))
         index_lines.append(
             "%04X%s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d"
-            " | %d | %d | %d | %s | %s | %s"
+            " | %d | %d | %d | %s | %s | %s | %s"
             % (tid, suffix, sector, sub["idx"], sub["type"], sub["dlen"],
                len(b.symbols), len(b.raw_strings), ne,
                counts.get(referrers.LOOKUP, 0), counts.get(referrers.TABLE, 0),
                counts.get(referrers.ROSTER, 0), counts.get(UNRESOLVED, 0),
                counts.get(EMPTY, 0), counts.get(DUMMY, 0),
-               region_bits, consumed_bits, residue_bits,
-               edit, "yes" if wholly else "no", dup_by_name.get(name, "-")))
+               region_bits, consumed_bits, residue_bits, edit,
+               "yes" if is_dummy else "no",
+               "yes" if wholly else "no", dup_by_name.get(name, "-")))
     write(os.path.join(out_dir, "meta", "blockindex.txt"), index_lines)
 
     cl = ["# control code census, dictionary expanded",
@@ -362,17 +383,6 @@ def build(disc_path, out_dir):
             st.append("%06X | %08X | %d | %d | %d | %s" % (off, v, length, lba, sec, ok))
     write(os.path.join(out_dir, "meta", "sectortable.txt"), st)
 
-    side = ["# CLEAN blocks first, then text id, then string index, so the safely",
-            "# editable material comes first. STATUS is the measured referrer for this",
-            "# string; BLOCK is whether its block can be re-encoded at all.",
-            "#",
-            "# UNRESOLVED means no referrer was found. Phase 12 did not establish",
-            "# ordinal addressing for any string, so there is no ORDINAL status and",
-            "# UNRESOLVED covers both possibilities without guessing the split.",
-            ""]
-    for _rank, _tid, _i, lines in sorted(side_rows, key=lambda r: (r[0], r[1], r[2])):
-        side.extend(lines)
-    write(os.path.join(out_dir, "dq4-side-by-side.txt"), side)
     write(os.path.join(out_dir, "dq4-placeholder-extract.txt"), placeholders)
 
     gl = ["# name and substitution codes. English column intentionally empty.",
@@ -437,8 +447,33 @@ def build(disc_path, out_dir):
             el = list(head)
             nch = 0
             for i2, stx in enumerate(estr):
-                el.append("[%02d] %s" % (i2, render(stx)))
-                nch += sum(1 for k, _v in stx if k == huffman.SJIS)
+                text = render(stx)
+                el.append("[%02d] %s" % (i2, text))
+                n_i = sum(1 for k, _v in stx if k == huffman.SJIS)
+                nch += n_i
+                # Rank 2, so executable material sorts after everything from the
+                # archive. Status comes from the Phase 11 executable-table
+                # measurement, which was gated; strings that measurement does not
+                # reach are UNRESOLVED and nothing is inferred for them.
+                got = erefs.get((tb.id, i2))
+                if got:
+                    st_name = got[0][0]
+                    where = " (%s%s)" % (got[0][1], "" if len(got) == 1
+                                         else ", %d refs" % len(got))
+                elif not n_i:
+                    st_name, where = (CONTROL if any(
+                        k == huffman.CTRL for k, _v in stx) else EMPTY), ""
+                else:
+                    st_name, where = UNRESOLVED, ""
+                subs = sorted({v for k, v in stx
+                               if k == huffman.CTRL and v in CTRL_RANGE_SUB})
+                rec = ["[id %04X / str %02d / source EXE @ 0x%08X]" % (tb.id, i2, va),
+                       "STATUS: %s%s  BLOCK: EXE (not covered by Phase 10-12)"
+                       % (st_name, where)]
+                if subs:
+                    rec.append("SUBS: %s" % ", ".join("%04X" % v for v in subs))
+                rec += ["JP: %s" % text, "EN:", "NOTE:", ""]
+                side_rows.append((2, tb.id, i2, rec))
             if etail:
                 el.append("[tail] %s" % render(etail))
             write(os.path.join(out_dir, "exe", "expanded", nm + ".txt"), el)
@@ -453,6 +488,66 @@ def build(disc_path, out_dir):
                    nref, "yes" if tb.f6 else "no", "yes" if tb.d else "no"))
     write(os.path.join(out_dir, "exe", "blockindex.txt"), exe_index_lines)
 
+    n_dummy_ids = sum(1 for r in block_rows if r[8])
+    n_dummy_strings = sum(r[5].get(DUMMY, 0) for r in block_rows)
+    n_clean = sum(1 for r in block_rows if r[6] == "CLEAN")
+    n_clean_nd = sum(1 for r in block_rows if r[6] == "CLEAN" and not r[8])
+    n_total_nd = sum(1 for r in block_rows if not r[8])
+    n_empty = sum(r[5].get(EMPTY, 0) for r in block_rows)
+    n_control = sum(r[5].get(CONTROL, 0) for r in block_rows)
+    side = [
+        "# DQ4 side-by-side. EN and NOTE are intentionally empty; nothing here is",
+        "# translated.",
+        "#",
+        "# ORDER: CLEAN blocks first, then BLOCKED, then executable-resident blocks.",
+        "# Within each, by text id then string index. The safely editable material is",
+        "# at the top.",
+        "#",
+        "# SOURCE COVERAGE",
+        "#   archive HBD1PS1D.Q41, all %d distinct text ids, ids 0x0020 to 0x0482" % nids_seen,
+        "#   executable SLPM_869.16, text blocks 0x048C and 0x048D, marked",
+        "#     'source EXE @ <address>' in the record header",
+        "#   Executable blocks were NOT covered by the Phase 10 to 12 referrer",
+        "#     analysis. Their STATUS comes from the separate Phase 11 executable-table",
+        "#     measurement where it reaches them, and is UNRESOLVED where it does not.",
+        "#",
+        "# DEDUPLICATION",
+        "#   One record per text id. Blocks sharing an id are byte-identical on this",
+        "#   disc, 0 ids have differing copies. Duplicate sectors are listed in",
+        "#   meta/blockindex.txt, not repeated here.",
+        "#",
+        "# DUMMY HANDLING",
+        "#   %d text ids are dummy-only, every non-empty string carrying the ダミー" % n_dummy_ids,
+        "#   marker. They appear once each here and account for %d strings." % n_dummy_strings,
+        "#   They are trivially CLEAN because they hold nothing unresolved, so they",
+        "#   are flagged '(dummy-only block)' and excluded from the operative counts.",
+        "#",
+        "# EMPTY AND CONTROL",
+        "#   %d strings are EMPTY: no symbols at all, only the terminator." % n_empty,
+        "#   %d strings are CONTROL: zero displayed characters but at least one" % n_control,
+        "#   control code, so they encode something and occupy real bits. Both are",
+        "#   present; neither is filtered out.",
+        "#",
+        "# BLOCK COUNTS, BOTH BASES",
+        "#   %d CLEAN blocks, of which %d are dummy-only;" % (n_clean, n_clean - n_clean_nd),
+        "#   %d CLEAN non-dummy blocks of %d. Quote the second when the question" % (n_clean_nd, n_total_nd),
+        "#   is what can actually be edited.",
+        "#",
+        "# STATUS is a MEASURED referrer, gated: the reference must land exactly on a",
+        "# string start and a one-bit shift must destroy the match. UNRESOLVED means",
+        "# no referrer was found, NOT that none exists. There is no ORDINAL status:",
+        "# Phase 12 established none, so UNRESOLVED covers both possibilities without",
+        "# guessing the split.",
+        "#",
+        "# BITS is the encoded length, the span to the next END inclusive. Offsets are",
+        "# absolute from the block base, so that span is the room a re-encoding has.",
+        "# SUBS lists substitution codes and is omitted when the string carries none.",
+        "",
+    ]
+    for _rank, _tid, _i, lines in sorted(side_rows, key=lambda r: (r[0], r[1], r[2])):
+        side.extend(lines)
+    write(os.path.join(out_dir, "dq4-side-by-side.txt"), side)
+
     status_totals = collections.Counter()
     for row in block_rows:
         counts = row[5]
@@ -463,12 +558,13 @@ def build(disc_path, out_dir):
 
     rollup, exe_rollup, nfiles = manifest(out_dir, len(by_id), total_chars, str_lengths, variants,
                               status_totals, clean, clean_nd, total_nd,
-                              chars_clean[0], chars_blocked[0], ph_cross, exe_stats)
+                              chars_clean, chars_blocked, ph_cross, exe_stats)
     return dict(rollup=rollup, exe_rollup=exe_rollup, nfiles=nfiles, nids=len(by_id), chars=total_chars,
                 lengths=str_lengths, variants=variants,
                 records=len(side_rows), placeholders=len(placeholders) // 4,
                 status=status_totals, clean=clean, clean_nd=clean_nd,
                 total_nd=total_nd, chars_clean=chars_clean[0],
+                chars_clean_dummy=chars_clean[1],
                 chars_blocked=chars_blocked[0], ph_cross=ph_cross, exe=exe_stats,
                 blocks=block_rows)
 
@@ -636,12 +732,17 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
         "",
         "| Metric | Value |",
         "|---|---:|",
-        "| blocks CLEAN, all blocks | %d |" % clean,
-        "| **blocks CLEAN, excluding dummy blocks** | **%d of %d** |" % (clean_nd, total_nd),
-        "| displayed characters in CLEAN blocks | **%d** |" % chars_clean,
-        "| displayed characters in BLOCKED blocks | %d |" % chars_blocked,
-        "| substitution-bearing strings in CLEAN blocks | %d |" % ph_cross.get("CLEAN", 0),
-        "| substitution-bearing strings in BLOCKED blocks | %d |" % ph_cross.get("BLOCKED", 0),
+        "| blocks CLEAN, all blocks | %d, of which %d are dummy-only |"
+        % (clean, clean - clean_nd),
+        "| **blocks CLEAN, non-dummy** | **%d of %d** |" % (clean_nd, total_nd),
+        "| **displayed characters in CLEAN non-dummy blocks** | **%d** |"
+        % chars_clean[0],
+        "| displayed characters in dummy-only blocks | %d |" % chars_clean[1],
+        "| displayed characters in BLOCKED blocks | %d |" % chars_blocked[0],
+        "| substitution-bearing strings in CLEAN non-dummy blocks | %d |"
+        % ph_cross.get(("CLEAN", "real"), 0),
+        "| substitution-bearing strings in BLOCKED blocks | %d |"
+        % ph_cross.get(("BLOCKED", "real"), 0),
         "",
         "## Executable-resident blocks",
         "",
