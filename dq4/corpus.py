@@ -26,7 +26,7 @@ from . import mips, referrers
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
 # diff the corpus and review before accepting a new value.
-ROLLUP_EXPECTED = "0ac84c906396617e7afab6a4042dfebcba496276b66c13c597b2db38a908972d"
+ROLLUP_EXPECTED = "dad99a93d87b200855e924cdf9295e2871d6d1f3fe0f88344375f3647b3a223a"
 EXE_ROLLUP_EXPECTED = "fea89bdaa08b339cf381cbc3afbfb1ca3411381d76d4ea8a5a0a369833b443d2"
 
 DUMMY_MARK = "ダミー"          # katakana damii
@@ -208,13 +208,25 @@ def build(disc_path, out_dir):
             body = [t for _i, _st, t, n in rendered if n]
             is_dummy = bool(body) and all(DUMMY_MARK in t for t in body)
 
+            # Bit budget. A string's encoded length is the span from its start
+            # offset to the next END inclusive. Offsets are absolute from the
+            # block base, so this span is exactly the room a re-encoding has.
+            offs = huffman.string_offsets(b.tb)
+            region_bits = (b.tb.e - b.tb.c) * 8
+            consumed_bits = offs[-1]
+            residue_bits = region_bits - consumed_bits
+            strbits = [offs[n + 1] - offs[n] for n in range(len(offs) - 1)]
+            if sum(strbits) + residue_bits != region_bits:
+                raise SystemExit("bit budget arithmetic failed for id %04X" % tid)
+
             counts = collections.Counter()
             rows = []
             for i, st, text, nchar in rendered:
                 status, where = string_status(refs, tid, i, nchar, is_dummy)
                 counts[status] += 1
-                rows.append((i, text, nchar, status, where, st))
-            blocked = any(st == UNRESOLVED for _i, _t, n, st, _w, _s in rows if n)
+                rows.append((i, text, nchar, status, where, st,
+                             strbits[i] if i < len(strbits) else 0))
+            blocked = any(st == UNRESOLVED for _i, _t, n, st, _w, _s, _b in rows if n)
             edit = "BLOCKED" if blocked else "CLEAN"
             # "wholly unreferenced" means the block HAS non-empty strings and none
             # of them is referenced. A block with nothing but empty strings is a
@@ -227,14 +239,18 @@ def build(disc_path, out_dir):
             ne_rows = [r for r in rows if r[2]]
             wholly = bool(ne_rows) and not any(refs.get((tid, r[0])) for r in ne_rows)
             block_rows.append((tid, suffix, sector, sub, b, counts, edit,
-                               wholly, is_dummy))
+                               wholly, is_dummy, region_bits, consumed_bits,
+                               residue_bits))
 
-            for i, text, nchar, status, where, st in rows:
+            for i, text, nchar, status, where, st, nbits in rows:
                 head = ("[id %04X / str %02d / sector %d / sub %d]"
                         % (tid, i, sector, sub["idx"]))
                 side_rows.append((0 if edit == "CLEAN" else 1, tid, i, [
                     head,
                     "STATUS: %s%s  BLOCK: %s" % (status, where, edit),
+                    "BITS: %d%s" % (nbits, ""
+                                    if not nchar else
+                                    "  (%.2f per displayed character)" % (nbits / nchar)),
                     "JP: %s" % text, "EN:", "NOTE:", ""]))
                 if edit == "CLEAN":
                     chars_clean[0] += nchar
@@ -296,21 +312,29 @@ def build(disc_path, out_dir):
         "# encoded length shifts every later string in the same block. That is why the",
         "# unit of safety is the block and not the string.",
         "#",
+        "#",
+        "# Bit budget: region bits is (e - c) * 8, the whole code stream. consumed is",
+        "# the span to the last END. residue is what follows it, trailing symbols plus",
+        "# pad. sum of per-string bits + residue == region, exactly, for every block.",
+        "#",
         "# text id | sector | sub | type | dlen | symbols | strings | non-empty"
-        " | LOOKUP | TABLE | ROSTER | UNRESOLVED | EMPTY | DUMMY | editability"
+        " | LOOKUP | TABLE | ROSTER | UNRESOLVED | EMPTY | DUMMY"
+        " | region bits | consumed bits | residue bits | editability"
         " | wholly unreferenced | duplicate sectors",
     ]
-    for tid, suffix, sector, sub, b, counts, edit, wholly, is_dummy in block_rows:
+    for (tid, suffix, sector, sub, b, counts, edit, wholly, is_dummy,
+         region_bits, consumed_bits, residue_bits) in block_rows:
         name = "%04X%s" % (tid, suffix)
         ne = sum(v for k, v in counts.items() if k not in (EMPTY,))
         index_lines.append(
             "%04X%s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d"
-            " | %s | %s | %s"
+            " | %d | %d | %d | %s | %s | %s"
             % (tid, suffix, sector, sub["idx"], sub["type"], sub["dlen"],
                len(b.symbols), len(b.raw_strings), ne,
                counts.get(referrers.LOOKUP, 0), counts.get(referrers.TABLE, 0),
                counts.get(referrers.ROSTER, 0), counts.get(UNRESOLVED, 0),
                counts.get(EMPTY, 0), counts.get(DUMMY, 0),
+               region_bits, consumed_bits, residue_bits,
                edit, "yes" if wholly else "no", dup_by_name.get(name, "-")))
     write(os.path.join(out_dir, "meta", "blockindex.txt"), index_lines)
 
@@ -430,7 +454,8 @@ def build(disc_path, out_dir):
     write(os.path.join(out_dir, "exe", "blockindex.txt"), exe_index_lines)
 
     status_totals = collections.Counter()
-    for _t, _s, _sec, _sub, _b, counts, _e, _w, _d in block_rows:
+    for row in block_rows:
+        counts = row[5]
         status_totals.update(counts)
     clean = sum(1 for r in block_rows if r[6] == "CLEAN")
     clean_nd = sum(1 for r in block_rows if r[6] == "CLEAN" and not r[8])

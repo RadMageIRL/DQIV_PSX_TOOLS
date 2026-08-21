@@ -398,6 +398,29 @@ def main():
         for g in (23, 24, 25, 26, 27, 28, 29):
             print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
 
+    # 35  the bit budget identity. A string's encoded length is the span from its
+    # start offset to the next END; those spans plus the trailing residue must
+    # account for the code stream exactly. This is arithmetic, so any failure is a
+    # decoder fault, not a tolerance.
+    bad = 0
+    tot_region = tot_consumed = tot_residue = 0
+    for _s, sb in hbd.text_sub_blocks(blocks):
+        tb = textblock.TextBlock(hbd.sub_bytes(arch, sb))
+        offs = huffman.string_offsets(tb)
+        region = (tb.e - tb.c) * 8
+        residue = region - offs[-1]
+        spans = sum(offs[n + 1] - offs[n] for n in range(len(offs) - 1))
+        tot_region += region
+        tot_consumed += offs[-1]
+        tot_residue += residue
+        if spans + residue != region:
+            bad += 1
+    rep.gate(35, "bit budget accounts for the code stream exactly",
+             bad == 0 and tot_consumed + tot_residue == tot_region,
+             "%d blocks fail; %d region = %d consumed + %d residue"
+             % (bad, tot_region, tot_consumed, tot_residue),
+             "0 blocks fail, totals balance")
+
     # 30  the type 26 referrer system, with its own shuffled control.
     # Scoped to the 30 most-referenced text ids so it stays cheap; the point is the
     # separation from the control, not the absolute count.

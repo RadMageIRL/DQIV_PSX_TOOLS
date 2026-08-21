@@ -821,6 +821,46 @@ font. Render before believing.
 
 ---
 
+## 11b. The bit budget
+
+MEASURED, Phase 13, gate 35.
+
+A string's encoded length is the span from its start offset to the next END inclusive. Summed
+spans plus trailing residue account for the code stream exactly, on all 1,528 sub-blocks:
+`66,521,504 region = 66,502,078 consumed + 19,426 residue`, 0 failures.
+
+Over the 1,106 distinct ids: region 4,891,456 bits, consumed 99.6965%, residue 0.3035%. Residue
+per block is min 0, median 13, max 32 bits. **This is a different measurement from Phase 1's
+pad count**, which counted bits after the last decodable symbol rather than after the last END;
+708 blocks have 10 residue bits or fewer on this definition, not 1,114.
+
+Bits per non-empty string: min 9, median 272, p90 573, max 5,331. Bits per displayed character:
+median 7.39.
+
+### English does not fit this budget
+
+Phase 13 modeled a Latin-charset tree per block: 72 character symbols plus the block's expanded
+control codes plus END, 73 to 93 leaves, pair array 145 to 185 against the 2,265 already on the
+disc, so **realizable with a wide margin**.
+
+| | median bits per displayed character |
+|---|---:|
+| existing Japanese trees | 7.256 |
+| modeled English | 4.762 |
+
+The 1.52x charset advantage does not cover the character growth. **Break-even is an expansion
+ratio of 1.366**; it sits below 1.52 because the 89,511 control codes and the string terminators
+are the same symbols in either language and do not shrink. At a 2.0 ratio 51 of 15,318 strings
+fit and **no block** has every string fitting; at 2.5, none fit at all.
+
+The 0x7Exx dictionary does not change this. Held at its measured 48.95% character coverage with
+entries of comparable length it buys 0.28% at ratio 2.0 and nothing at 2.5, and its own bytes
+exceed the whole block in 99% of blocks: the median block is 1,631 bits and a maximum-size
+dictionary is 34,680.
+
+**Consequence: offsets must move, so referrer completeness is required.** Preserving encoded
+length is not an available strategy.
+
 ## 12. The tail record table and the lookup routine
 
 MEASURED, Phase 10. 855 of 1,528 text sub-blocks carry a tail table. Deduplicated by text id
