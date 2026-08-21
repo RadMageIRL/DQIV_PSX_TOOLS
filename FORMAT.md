@@ -498,15 +498,32 @@ Phase 5. What the decompressed content is remains UNKNOWN. It is not Huffman tex
 block's own tree, and the decompressed bytes are not a glyph bank indexed by the record table
 (section 11).
 
-**The 855-block tail record table.** 855 of 1,528 text sub-blocks carry a u32 count followed
-by that many 8-byte records after the self pointer. The count field is consistent with the
-remaining tail length in 855 of 855 blocks, and the second u32's high 12 bits equal the
-containing block's own text id in **12,870 of 12,870** records. The low 20 bits are below the
-sub-block length in only 38.2% of records, so they are not block-local offsets. Semantics
-UNKNOWN. MEASURED, Phase 2, for the structure.
+**The tail record table.** 855 of 1,528 text sub-blocks carry a u32 count followed by that
+many 8-byte records after the self pointer. Deduplicated by text id that is **9,371 records
+across 813 text ids**; the 12,870 figure counts duplicate copies of the same id.
+
+Field structure is fully measured (MEASURED, Phase 8), semantics are not:
+
+  * first u32  = `0xFFF00000 | key`, high 12 bits are 0xFFF on all 9,371 records, and the key
+    increments by exactly 1 between consecutive records in 8,005 of 9,370 pairs
+  * second u32 = `(own text id << 20) | value`, high 12 bits equal the block's own text id on
+    all 9,371
+
+The `value` field is **not** a bit offset into the block's Huffman stream. Tested against the
+corpus, it lands on a string start 0.51% of the time and on any symbol boundary 15.8% of the
+time, against a random baseline of 15.9%. Semantics UNKNOWN.
+
+The 0xFFF sentinel matches the `FFF0` in the documented `C021A0 <FFF0> <key>` lookup command,
+which makes this table the obvious thing such a key would index. That correspondence is
+suggestive and unconfirmed: INFERRED.
 
 **The per-kanji record table at `d + 32`.** One 8-byte record per kanji leaf of the block's
 tree, carrying a u32 and a 16-bit value that is 0x0D0C on almost every entry. Purpose UNKNOWN.
+
+The u32 is **block-local**. Of 897 kanji appearing in the record tables of three or more text
+ids, only 34 carry the same u32 everywhere; 863 differ, and the mean ratio of distinct values
+to blocks is 0.858. It is an index into something local to the block, not a global glyph
+identifier pointing at a shared payload. MEASURED, Phase 8.
 
 That 16-bit field was once read as a glyph width and height, 0x0D0C as 12 by 13. **That reading
 is withdrawn**: the atlas renders kanji at 8 pixels wide, so a 12-wide glyph dimension cannot
@@ -668,6 +685,36 @@ control scores higher than the real file: 15 hits against 7 for the US image, 10
 the Japanese one. Their byte diff is 24,367 separate runs with a largest contiguous difference
 of 1,781 bytes, which is a version revision rather than a resource present in one and absent
 from the other.
+
+### The tail record values are not bit offsets
+
+The obvious reading of the tail table's second u32, `(text id << 20) | bit offset`, matching
+the sector table's packing, does not survive contact with the corpus. The values are the right
+*magnitude*: divided by the block's code-stream bit length they run median 0.598 with 97.4% at
+or below 1.0. They are still not offsets.
+
+| Test | on a symbol boundary |
+|---|---:|
+| value as a bit offset | 15.8% |
+| **random offsets, same blocks** | **15.9%** |
+
+Matching a random baseline to within 0.1 points is the end of that hypothesis.
+
+### C0 21 A0 is not a three-byte opcode
+
+Type 39 scripts are **word-aligned u32 streams** with `0xA0` as the top byte of the command
+class. Searched as a three-byte pattern, `C0 21 A0` straddles a word boundary and matches
+92,681 times by chance, with near-uniform alignment residues. Word aligned, the real command
+is `0xA021C000`, occurring 15,207 times across the 927 distinct script blocks.
+
+The documented `<u16 bit offset> <u16 text id>` argument does not verify against the corpus.
+Reading the following word either way gives 0.00% and 27.14%, and the 27% is an artifact:
+the word's median value is 14, so its high half is zero on most commands and offset 0 is
+always a valid string start.
+
+An unbiased scan for *any* valid (offset, text id) u16 pair anywhere in the scripts, gated on
+the corpus, is beaten by its own shuffled control: 220 hits in 200 real blocks against 569 in
+the same blocks shuffled. There is no dense pointer encoding of that shape to find.
 
 ### The MIPS false-positive trap
 
