@@ -162,13 +162,26 @@ def build(arch, blocks, index=None):
 def exe_blocks(exe, load, toff, tsize):
     """[(va, TextBlock)] for text blocks embedded in the executable.
 
-    Located by the six-u32 header signature, the same structural test used on
-    DW7 in Phase 6: c == 24, a plausible a, and e either zero or inside a.
+    Located by the six-u32 header signature: a plausible a, e either zero or
+    inside a, and c consistent with the dictionary pointer f6.
+
+    CORRECTED, Phase 46. The test used to require c == 24, which is only true of
+    a block with NO dictionary. A block that has one carries its dictionary in
+    [24, c), so c is greater than 24 and f6 is 24. Requiring c == 24 made every
+    such block invisible, and one is: 0x048F at 0x800B0D24, c = 648, f6 = 24.
     """
     out = []
     for o in range(0, tsize - 24, 4):
         a, bid, c, d, e, f6 = struct.unpack_from("<6I", exe, toff + o)
-        if c != 24 or not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+        if not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+            continue
+        if f6 == 0:
+            if c != 24:
+                continue
+        elif f6 == 24:
+            if not (24 < c < a):
+                continue
+        else:
             continue
         if e and not (24 < e <= a):
             continue
