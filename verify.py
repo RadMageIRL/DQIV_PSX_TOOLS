@@ -490,8 +490,57 @@ def main():
                  len(refs) == 213 and hit == len(refs) and off1 == 0,
                  "%d refs, %d on a string start, %d at +1 bit" % (len(refs), hit, off1),
                  "213 refs, all on a string start, 0 at +1 bit")
+        # 42  MENU TEXT RESOLVES IN FONT 1, which is a different table from the
+        # one gate 38 checks. MEASURED, Phase 59: the message box draws from
+        # FONT2 and the menus draw from FONT1. The tables are not the same set,
+        # so a menu string checked against font 2 is not checked at all.
+        # The range is exe block 0x048C indices 550 to 778, which is the menu
+        # vocabulary: the command menu, the item and spell verbs, the tactics
+        # list, the adventure-log menu and the Yes/No pair at 757 and 758.
+        fimg = exe[toff:toff + tsize]
+        menu_codes = set()
+        n_menu = 0
+        for _va, tb in referrers.exe_blocks(exe, load, toff, tsize):
+            if tb.id != 0x048C:
+                continue
+            tree = huffman.HuffmanTree(tb)
+            syms = tree.decode()
+            entries = dictionary.parse(tb.raw, tb)
+            expanded, _u = dictionary.expand(syms, entries)
+            estr, _t = huffman.split_strings(expanded)
+            for st in estr[550:779]:
+                n_menu += 1
+                for kind, val in st:
+                    if kind == huffman.SJIS:
+                        menu_codes.add(val)
+        miss1 = fonts.missing(fimg, load, fonts.FONT1, menu_codes)
+        rep.gate(42, "menu strings resolve in font 1",
+                 n_menu == 229 and len(menu_codes) == 172 and not miss1,
+                 "%d strings, %d distinct codes, %d missing from font 1"
+                 % (n_menu, len(menu_codes), len(miss1)),
+                 "229 strings, 172 codes, 0 missing")
+
+        # 43  COMPANION to 42, and it validates the INSTRUMENT rather than the
+        # data. Gate 42 passes trivially on the shipped disc because the shipped
+        # menu is Japanese and every code it draws is present; a checker that
+        # always returned "nothing missing" would pass it too. So: feed the
+        # checker a code KNOWN to be absent from font 1 and require it to say so,
+        # and assert the two tables actually differ, because if `table` ever
+        # returned the same set for both bases gate 42 would be checking font 2.
+        # 0x8166 is the apostrophe. It has no font 1 entry in the shipped
+        # executable, which is exactly why an English menu cannot use one yet.
+        probe = fonts.missing(fimg, load, fonts.FONT1, {0x8166, 0x8147})
+        t1 = set(fonts.table(fimg, load, fonts.FONT1))
+        t2 = set(fonts.table(fimg, load, fonts.FONT2))
+        rep.gate(43, "the font 1 checker detects a known absence  (COMPANION)",
+                 probe == [0x8147, 0x8166] and len(t1 - t2) == 98
+                 and len(t2 - t1) == 86 and len(t1 & t2) == 435,
+                 "probe reported %d of 2 absent; font1-only %d, font2-only %d,"
+                 " shared %d" % (len(probe), len(t1 - t2), len(t2 - t1),
+                                 len(t1 & t2)),
+                 "both probes absent; 98 / 86 / 435")
     else:
-        for g in (23, 24, 25, 26, 27, 28, 29):
+        for g in (23, 24, 25, 26, 27, 28, 29, 42, 43):
             print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
 
     # 35  the bit budget identity. A string's encoded length is the span from its
@@ -745,6 +794,7 @@ def main():
                  "%d overlay ids, %d shared with the archive, %d with the executable"
                  % (len(ov_ids), len(ov_ids & arch_ids), len(ov_ids & eids)),
                  "15 overlay ids, 0 shared with either")
+
 
         # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
         # per-block figure. If the generator and the phase report disagree, one of

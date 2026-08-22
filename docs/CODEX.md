@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Eight instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Nine instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -68,6 +68,16 @@ it.** The owner here was one `addiu` and a BIOS call, two hundred bytes away fro
 address scan reported, and the address scan was not wrong: nothing writes to a heap statically,
 which is exactly why the scan was silent. **The validating case is the one where the content is
 present, and for an arena that means at runtime, not in the image.**
+
+Corollary, and it is the rule pointed at an ALPHABET: **validate a character table on text that
+exercises every class of character you intend to read.** A crib found a text block at one additive
+offset and the block decoded into real English, so the table was trusted and used for four separate
+searches that all returned clean negatives. **The table was right about uppercase and wrong about
+every lowercase letter**, which sat in a different code range entirely. The two crib words were
+`LEVEL` and `GOLD`: both uppercase, so neither could ever have detected the fault. **A partial
+instrument VALIDATES, which is worse than one that fails**, because a failure sends you looking and
+a pass sends you on. The searches that came back empty were searching for mixed-case words that no
+single-key cipher could have matched.
 
 ## 2. Check a hypothesis against BOTH halves of the symptom before testing it
 
@@ -316,7 +326,7 @@ having only while every entry has a measured before and after.
 
 ---
 
-**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has eight, rule 3 has four, rule 4 has three, rule 8 has
+**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has nine, rule 3 has four, rule 4 has three, rule 8 has
 two. Everything else has one.
 
 Linked from `FORMAT.md` and from the working notes. **One authoritative location per fact**: nothing
