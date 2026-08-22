@@ -441,7 +441,17 @@ def main():
         for o in range(0, tsize - 24, 4):
             w = struct.unpack_from("<6I", exe, toff + o)
             a, bid, c, _d, e, _f6 = w
-            if c != 24 or not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+            # c == 24 only for a block with no dictionary; one WITH a dictionary
+            # carries it in [24, c) and sets f6 to 24. Phase 46.
+            if not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+                continue
+            if _f6 == 0:
+                if c != 24:
+                    continue
+            elif _f6 == 24:
+                if not (24 < c < a):
+                    continue
+            else:
                 continue
             if e and not (24 < e <= a):
                 continue
@@ -450,9 +460,9 @@ def main():
             found.append((load + o, bid, a, e))
         rep.gate(28, "text blocks embedded in the executable",
                  [(v, b) for v, b, _a, _e in found]
-                 == [(0x800AF1C8, 0x48C), (0x800B0C5C, 0x48D)],
+                 == [(0x800AF1C8, 0x48C), (0x800B0C5C, 0x48D), (0x800B0D24, 0x48F)],
                  ", ".join("0x%08X id 0x%03X" % (v, b) for v, b, _a, _e in found) or "none",
-                 "0x800AF1C8 id 0x48C, 0x800B0C5C id 0x48D")
+                 "0x800AF1C8 id 0x48C, 0x800B0C5C id 0x48D, 0x800B0D24 id 0x48F")
 
         # 29  COMPANION to 28. The block is only real if references resolve INTO it.
         # Two static tables the disassembly names must land on its string starts, and a
@@ -695,7 +705,46 @@ def main():
                  eroll == corpusmod.EXE_ROLLUP_EXPECTED,
                  "%s... %d blocks, %d strings"
                  % (eroll[:16], built["exe"]["blocks"], built["exe"]["strings"]),
-                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 2 blocks, 784 strings")
+                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 3 blocks, 1120 strings")
+
+        # 40  The third population, the type 46 MIPS overlays. Gated the same way
+        # the executable subtree is, and with the same reason: a moved archive
+        # roll-up must keep meaning exactly one thing. The companion figures are
+        # asserted alongside the hash so a hash that matches for the wrong reason
+        # still fails. MEASURED, Phase 52 and 53.
+        oroll = built["ov_rollup"]
+        ovs = built["overlay"]
+        rep.gate(40, "corpus overlay subtree roll-up",
+                 (oroll == corpusmod.OVERLAY_ROLLUP_EXPECTED
+                  and ovs["blocks"] == 15 and ovs["strings"] == 1695
+                  and ovs["chars"] == 28602 and ovs["occurrences"] == 451),
+                 "%s... %d blocks, %d strings, %d chars, %d occurrences"
+                 % (oroll[:16], ovs["blocks"], ovs["strings"], ovs["chars"],
+                    ovs["occurrences"]),
+                 corpusmod.OVERLAY_ROLLUP_EXPECTED[:16]
+                 + "... 15 blocks, 1695 strings, 28602 chars, 451 occurrences")
+
+        # 41  COMPANION to 40. A roll-up over 15 files can match while the
+        # LOCATOR is wrong, so assert the property the locator rests on: every
+        # overlay text id is absent from both other populations. If type 46 ever
+        # started duplicating archive ids, gate 40 alone would not notice.
+        ov_ids = set()
+        for line in open(os.path.join(args.corpus_out, "overlay", "blockindex.txt"),
+                         encoding="utf-8"):
+            if line.startswith("#") or "|" not in line:
+                continue
+            ov_ids.add(int(line.split("|")[0].strip(), 16))
+        arch_ids = set()
+        for sector, sub in hbd.text_sub_blocks(blocks):
+            raw = hbd.sub_bytes(arch, sub)
+            if len(raw) >= 24:
+                arch_ids.add(textblock.TextBlock(raw).id)
+        eids = {tb.id for _va, tb in referrers.exe_blocks(exe, load, toff, tsize)}
+        rep.gate(41, "overlay ids are a population of their own  (COMPANION)",
+                 len(ov_ids) == 15 and not (ov_ids & arch_ids) and not (ov_ids & eids),
+                 "%d overlay ids, %d shared with the archive, %d with the executable"
+                 % (len(ov_ids), len(ov_ids & arch_ids), len(ov_ids & eids)),
+                 "15 overlay ids, 0 shared with either")
 
         # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
         # per-block figure. If the generator and the phase report disagree, one of
