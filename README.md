@@ -48,6 +48,9 @@ single authoritative place for that, and every claim in it carries either the ga
 number that proves it or an explicit INFERRED or UNKNOWN label. This README does not
 repeat any of it.
 
+`docs/CODEX.md` is the other half: the method rules, each one recorded with what it
+cost to learn. It is about how to measure a format, not about this one.
+
 ## Layout
 
 ```
