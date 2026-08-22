@@ -83,14 +83,42 @@ sector format begins there (section 8). MEASURED, Phase 0; the heap scan is gate
 |---:|---:|---|
 | 0 | u32 | data length |
 | 4 | u32 | uncompressed length |
-| 8 | u32 | RAM load address, or zero |
+| 8 | u32 | destination, or zero; the meaning depends on type, see below |
 | 12 | u16 | flags |
 | 14 | u16 | type |
 
-The field at +8 was carried as unknown until Phase 28. It is a **destination address in main
-RAM**: 21 distinct values, all in the 0x8001xxxx to 0x801Exxxx range, nonzero on **965 of
-23,828** sub-blocks and zero on the rest. It never equals either length field. Sub-block types
-that load to a fixed address record it here; everything else carries zero. MEASURED.
+### CORRECTED, Phase 45: the field at +8 is polymorphic
+
+Phase 28 recorded this field as follows, and the claim is kept here in full because part of it is
+still right:
+
+> The field at +8 was carried as unknown until Phase 28. It is a **destination address in main
+> RAM**: 21 distinct values, all in the 0x8001xxxx to 0x801Exxxx range, nonzero on **965 of
+> 23,828** sub-blocks and zero on the rest.
+
+**The count is 20 distinct values, not 21, and they are not all RAM addresses.** MEASURED across
+all 23,828 sub-blocks:
+
+| reading | values | which |
+| --- | --- | --- |
+| **main RAM address** | 11 | all in `0x80011F08` to `0x80210000`, types 44, 45, 46, 47 |
+| **too small to be an address** | 7 | the values 1 to 7, every one of them type 32 |
+| **neither** | 2 | `0x04000380` on the three atlases and `0x01034380` on the three CLUTs, both type 1 |
+
+So the field is a destination whose **interpretation depends on the sub-block type**, and reading
+it as a RAM address unconditionally is what hid the type 1 case.
+
+**On the two type 1 values, INFERRED and not measured.** Under the usual PlayStation packing of
+`(y << 10) | x`, `0x04000380` gives x = 896, y = 0 and `0x01034380` gives x = 896, y = 208. The
+atlas is 256 pixels wide at 4bpp, which is 64 VRAM halfwords, and its 16,128 bytes are 8,064
+halfwords, which is exactly 64 by 126, its own row count. The CLUT block's 512 halfwords are
+exactly 16 by 32. Both land at x = 896, and the font 2 glyph cache observed at `0x800874A0` uploads
+to x = 896 + (s1 >> 2), y = 154 + s6, between them.
+
+**The companion for that reading fails and the reading is therefore not established.** Under the
+same packing the genuine RAM addresses also decode to plausible coordinates, `0x80011F08` giving
+(776, 71). The packing alone discriminates nothing; only the value range does. No code that
+consumes the field for a type 1 sub-block has been read.
 
 **Alignment.** Sub-block start offsets are not stored anywhere; they are implied by accumulating
 `dlen` from the sub-block table, and condition 4 of the validity filter requires the lengths to
@@ -727,7 +755,7 @@ to look. What it said:
 > | **best cross-atlas match found, searching every pixel offset** | **82** |
 >
 > Every cross-atlas best match falls below the 91 same-font ceiling, and every one lands on a
-> **shape neighbour**: B matches C, P matches O, N matches M, R matches Q. That is the signature
+> **shape neighbor**: B matches C, P matches O, N matches M, R matches Q. That is the signature
 > of absence, not of a font revision.
 >
 > A second hypothesis, that the run turns around and the missing letters follow, was tested by
@@ -752,7 +780,7 @@ inside a wrong decoding can detect that. Worse, the calibration made the result 
 a self-112 / ceiling-91 / best-82 spread looks like exactly the kind of evidence that should
 settle a question.
 
-The shape-neighbour pattern that read as "the signature of absence" was the real tell and was
+The shape-neighbor pattern that read as "the signature of absence" was the real tell and was
 misread. B scoring against C, P against O, N against M, R against Q is what you get when each
 cell contains **both** letters of an adjacent pair: B and C share cell 38, and the superposition
 resembles either one. That pattern was evidence of superposition and was interpreted as
@@ -1181,6 +1209,65 @@ unreferenced concentrations are text ids 0x0021 (1,086), 0x0023 (576), 0x0020 (3
 
 ---
 
+## 12b. The per-block font records, and reclamation
+
+MEASURED, Phase 51. The region `[d, a)` of a text sub-block holds a font record and the table it
+names. 1,337 of the 1,528 text sub-blocks have one; 191 have `d == 0` and none at all.
+
+### Layout, identical in DQ4 and in DW7's Japanese and English builds
+
+| Offset from `d` | Size | Field | Measured |
+|---|---|---|---|
+| `+0` | 4 | record count | 1 in 1,337 of 1,337 |
+| `+4` | 4 | buckets, **block-relative** | `d + 28` in 1,337 of 1,337 |
+| `+8` | 4 | glyphs, **block-relative** | `buckets + 2 * modulus` |
+| `+12` | 2 | modulus | 8 distinct values, `{2: 1001, 23: 79, 31: 68, 3: 59, 5: 58, 11: 42, ...}` |
+| `+14` | 2 | font id | **2 in 1,337 of 1,337.** No archive block registers font 1 |
+| `+16` | 2 | | 2 |
+| `+18` | 2 | entry count | 108 distinct values |
+| `+20`, `+22` | 2, 2 | | 16, 16 |
+| `+24`, `+26` | 2, 2 | cell_w, cell_h | **0 and 0 in 1,337 of 1,337**, which selects the 8-byte chain stride |
+| `+28` | `2 * modulus` | the bucket array, self-relative halfword heads | |
+| then | | chains at stride 8, then the glyph bitmaps, up to `a` | |
+
+The two block-relative offsets are why this region is fragile: **they are measured from the block
+base, so anything that moves `d` must move them too.**
+
+### The lookup, read to its `jr $ra`
+
+`0x8008F7B0`. Twelve registration slots of 32 bytes at `0x80100168`; per slot, `+0` is the block
+base, `+4` the record array and `+20` the record count. For each record it compares `+10` against
+the requested font id, divides the character code by the modulus at `+8`, doubles the remainder and
+indexes the bucket array at `base + [record+0]`. **A zero bucket halfword is a miss**, taken without
+dereferencing anything; a zero code halfword inside a chain ends it the same way. On total failure
+the routine returns 0.
+
+### Reclamation
+
+Reducing the region to a stub is what Heart Beat did on the English build of DW7: **all 877 of its
+English text blocks carry a records region of exactly 36 bytes, one distinct size.** The 36 is
+`32 + 2 * modulus` with the modulus at 2, so:
+
+* the 24-byte record header survives,
+* the two block-relative offsets move with `d`,
+* the entry count at `+18` goes to 0, so the u32 at `+16` reads 2,
+* **the bucket array is present and zeroed, not removed**, and
+* the glyph area is emptied to 4 bytes.
+
+**The modulus must never be zeroed.** `divu` by it is executed unconditionally and guarded by an
+explicit `break 0x1C00` two instructions later, so a zero modulus traps rather than missing.
+**DW7 forces the modulus to 2 on all 877 blocks, including the 22 where the Japanese carried 3 or
+5**, which is a measured precedent for changing it and is what makes the size fixed rather than
+proportional.
+
+Reclaiming removes the block's own glyphs permanently, so **a reclaimed block cannot be left partly
+Japanese.** DQ4's 0x0186 uses 100 codes with no entry in the global font 1 table; its English needs
+none of them.
+
+Reproduced on DQ4 and proven on hardware, Phase 51.
+
+---
+
 ## 13. The second referrer system, and the text-reference word
 
 MEASURED, Phase 11.
@@ -1431,6 +1518,12 @@ Both are keyed by **fullwidth Shift-JIS codes** and neither contains any code be
 Font 2 covers the same code space as font 1, including all 52 Latin letters, with proportional
 widths: capitals mean 9.3 px, lowercase 7.4, digits 7.7, kanji 11.9.
 
+**THE MESSAGE BOX DRAWS FROM FONT 2. MEASURED on hardware, 2026-08-22.** Three separate edits to the
+font 1 table had zero effect on a dialogue box and one edit to font 2 rendered, on the same disc in
+the same box. **Everything this section records about font 1 is correct and describes font 1**, which
+the same boot shows the menus use; it does not describe the message box. The two tables overlap
+heavily, 434 codes of 533 and 521, which is why the difference went unnoticed for twenty-five phases.
+
 **Font selection is a caller-set mode, not a property of the character.** At `0x8002D620` the
 drawing routine loads a byte from the text state at `+131` and compares it against 1 and 2:
 
@@ -1645,7 +1738,170 @@ does not exist. Parse the opening run into a list of codes and look inside it.
 
 ---
 
+## 15d. Type 46, the MIPS overlays, and the text blocks inside them
+
+MEASURED, Phase 52. 612 type 46 sub-blocks, 600 LZS compressed and 12 raw, 43,846,220 bytes
+decompressed. **They hold only 188 distinct contents.** The sub-block header's third u32 is a load
+address and takes exactly three values: `0x8013BF04` on 502, `0x80102448` on 93 and `0x80143F80`
+on 17. `0x80102448` is the byte the game's own boot clear stops at, section 12b and Phase 49.
+
+**The overlays carry text blocks in the format of section 3.** Same six-u32 header, same 0x7Exx
+dictionary, same dual-base tree, same self pointer at `a`.
+
+| | |
+|---|---:|
+| embedded text blocks, occurrences over the 188 distinct contents | 131 |
+| **distinct text blocks** | **15** |
+| distinct text ids, all in `0x0473` to `0x048B` | 15 |
+| strings | 1,695 |
+| displayed characters, dictionary expanded | 28,602 |
+| bytes of text block inside 5,618,043 bytes of distinct overlay | 44,196, **0.79%** |
+
+**None of the 15 ids occurs in the archive population or in the executable population.** They sit
+immediately below the executable's `0x048C`, `0x048D` and `0x048F`.
+
+The finder is the structural test of section 3 plus a complete decode. It is insensitive to its own
+filters: relaxing the id range to `0x0001..0xFFFF` and dropping the self pointer requirement both
+return the same 131.
+
+### How an overlay reaches its own pool
+
+An overlay is loaded at a fixed address, so its `jal` targets are absolute:
+
+| target | routine | sites | distinct overlays |
+|---|---|---:|---:|
+| `0x8008F178` | `register_block` | **137** | 71 |
+| `0x8008F280` | the reference resolver, section 12 | **304** | 106 |
+
+Every `register_block` site forms its pool's absolute base with a static `lui`/`addiu` pair, and
+that base resolves to a text block header. **This is the dynamic registration Phase 50 inferred
+from the executable side**, where 19 of 24 call sites load their base from memory.
+
+The overlays also carry the packed reference word of section 13: **1,781 of them, 1,779 landing
+exactly on a string start.**
+
+No length is baked into any instruction, and there is nowhere to put one. String symbol lengths run
+0 to 112, so a length field would need 7 bits, and the reference word is 12 bits of text id plus 20
+bits of bit offset with nothing spare.
+
+### Correcting Phase 32's reading of the index
+
+Phase 32 found a u16 index whose entries chain as `offset + 2 * length`, could not find a base that
+put the boundaries on string starts, and concluded the top four bits were not a length.
+
+**The chain is real, the top four bits ARE a length in 16-bit units, and the entries are DICTIONARY
+PHRASES rather than strings.** Measured over 531 entries in 12 blocks: 519 of 519 consecutive pairs
+chain exactly; the top four bits take 7 distinct values so it is not a flag; it varies inside every
+table so it is not a pool id; 299 of 531 exceed 3 so it is not an alignment count.
+
+**The base is not a constant to search for.** The phrases begin immediately after the index, so
+
+    base = index_start + 2 * count - offset[0]
+
+and the entry count is derived the same way `dictionary.parse` already derives it. The tiled phrase
+region ends two bytes before `c` in the pools measured, because **`c` is that region's end rounded
+up to a multiple of 4**.
+
+### One population that is not Huffman
+
+MEASURED: 1,565 deduplicated characters of plain Shift-JIS sit outside every text block. They are
+the memory card save file title, the message speed labels and a few short labels. INFERRED, and the
+reason is sound: the save file title has to be plain Shift-JIS because the PlayStation BIOS memory
+card manager renders it, not the game.
+
+---
+
+## 15e. Font 2, the dialogue font: the table, the descriptor and the payload
+
+MEASURED, Phases 59 to 61. **The message box draws from font 2.** Everything section 15 records about
+font 1 describes font 1, which the menus use.
+
+| | |
+|---|---|
+| registered from | `0x800B3600`, record at `0x800B361C` |
+| entries | **521** as shipped |
+| modulus | **29** |
+| stride | **8** |
+| entry layout | descriptor u32 at `+0`, **code u16 at `+4`**, width u8 at `+6`, height u8 at `+7` |
+| `cell_w`, `cell_h` | 0 and 0, which is what selects the 8-byte stride |
+| payload base | `record.glyphs` = `0x11A0`, so `0x800B47A0` |
+
+### The descriptor
+
+    bits  0..19   a PIXEL index into the payload, 2 bits per pixel
+    bits 20..27   the registration SLOT
+    bits 28..31   the RECORD index within that slot
+
+**The high 12 bits are ZERO in the shipped image because the LOOKUP writes them at runtime.**
+`0x8008F8E8` to `0x8008F900` masks with `0xF00FFFFF`, ors in the slot, masks with `0x0FFFFFFF`, ors
+in the record index and stores the descriptor back. The table patches itself on first use.
+
+The expander resolves the payload as `[slot+0] + [record+4] + (index >> 2)`, word aligned, with the
+starting bit at `(index * 2) & 0x1F`.
+
+### The payload encoding
+
+Read at `0x8008FA30` to `0x8008FB40`:
+
+    read 2 bits -> value
+    if value != 0:  run = 1
+    else:           read 2 more bits, run = those + 1, so 1 to 4 zeros
+    emit `run` pixels of `value`, until width * height pixels are emitted
+
+Validated against six glyphs of known shape, and round-tripped on two authored glyphs.
+
+### THE DONOR RULE, and why it stops mattering
+
+A code substituted into an existing entry must satisfy `new_code % 29 == old_code % 29`, or the entry
+leaves the bucket it physically sits in and is never found. The miss is silent. **521 of 521 shipped
+entries obey it.**
+
+**But an entry can be APPENDED instead, and then the rule does not apply.** The chain region
+`0x800B3670` to `0x800B47A0` is exactly packed, 550 slots for 521 entries and 29 terminators, with no
+gaps, so no chain grows in place. **The bucket head is an UNSIGNED u16 SELF-RELATIVE offset**, so a
+chain can be copied whole into free space with one extra entry and a terminator, and one halfword
+rewritten. Nothing existing moves.
+
+The record's entry count at `+14` is **never read** by the lookup or the expander, so it does not
+need updating.
+
+> **WRONG, CORRECTED PHASE 62, and it cost a boot.** This section said there were 4,076 bytes of
+> free space at `0x800B9248`. **That region is the malloc HEAP.** `0x8009A1CC` calls `0x800A5EA0`,
+> which is `jr 0xB0` with `t1 = 25`, so it is BIOS `B(19h)` `InitHeap(0x800B9204, 4060)`. It ships as
+> zeros because a fresh heap is empty. A chain relocated into it is overwritten by the allocator, and
+> **every code in that chain is lost, not just the new one.** Measured on hardware: three shipped
+> letters vanished from the message box. **There is no free space in this executable's data segment
+> that has been shown to be free.**
+
+### The method that works, and it needs no free space at all
+
+MEASURED, Phase 62, gated in both directions.
+
+**The entry OVERWRITES THE BUCKET'S OWN TERMINATOR.** Nothing is relocated, no bucket head changes,
+and no byte outside the font 2 table moves. The cost: a MISS on that bucket now walks on into the
+next chain and stops at ITS terminator. **No false hit is possible**, because every code in the next
+chain hashes to a different bucket and is never looked up through this one. **The chain must have a
+successor, so never do this to the last chain in the array.**
+
+**The payload OVERWRITES the stream of a glyph that is never drawn.** Streams are packed contiguously
+and a donor rarely starts on a word boundary, so write the bits **at the donor's own bit offset**
+rather than as bytes, or the neighboring glyphs are destroyed. The cost is real and must be stated
+every time: **the donor glyph decodes garbage afterwards and leaves the available inventory.**
+
+Proven in Phase 62: two codes added, `0x8166` and `0x8147`, **zero of the 521 existing entries
+altered, zero lost**, executable length unchanged, and **29 bytes differ from the shipped
+executable, none of them in the heap.**
+
+---
+
 ## 16. On gates
+
+**The method rules this project runs on live in `docs/CODEX.md`, not here.** That file is the
+authoritative location for them; this section states only the one that shapes the gate suite
+directly, and does not repeat the rest.
+
+### The rule
+
 
 The most transferable thing in this repository is not a format detail. It is this.
 
