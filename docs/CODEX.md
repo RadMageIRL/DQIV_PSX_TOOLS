@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Fourteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Fifteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -105,6 +105,16 @@ live in the archive rather than the executable. The range was taken from the mes
 hand, so it could only ever contain them. **Enumerate a class from what the player sees, not from
 where the ones you have already found happen to sit**, and treat an index range as a summary of the
 answer rather than a definition of the question.
+
+Corollary, and the cheapest one to fall for: **a search inherits every blind spot of the formatter it
+prints through.** A decoder emitted character and control symbols and silently dropped phrase
+dictionary references. Every string built from those references was invisible to every search built
+on it, and worse, they did not vanish: they came back TRUNCATED, so `LO! FOUND` read as a different
+and shorter string rather than as a symbol class gone missing. A whole block of 336 strings was
+searched twice and reported clean while holding the eight messages being looked for. The rule for
+measuring a line already said to expand the dictionary first; it applies to SEARCHING for one too,
+and searching is where it costs more, because a measurement that drops symbols is merely wrong while
+a search that drops them reports that the thing is not there.
 
 Corollary, and it is the sharpest form of the rule: **a search can be complete over every population
 and every alignment and still be complete over the wrong THING.** Four phases enumerated references
