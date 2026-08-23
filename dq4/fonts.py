@@ -18,7 +18,7 @@ pixel, and bit 0 of the descriptor selects which plane is visible by choosing a
 CLUT. Reading a cell as a single 4bpp image superimposes both glyphs; that error
 survived three phases and is why cell_plane() exists.
 
-Format details are in FORMAT.md section 15.
+Format details are in docs/FONTS.md.
 """
 
 import collections

@@ -459,73 +459,13 @@ hold the glyph atlas, so the atlas **is** loaded by the game.
 
 ## 8. Glyph atlas
 
-The type 1 sub-blocks hold a 4bpp atlas. Six sub-blocks, two distinct contents, three copies
-each.
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
 
-| Property | Value |
-|---|---|
-| pixel format | 4bpp, **low nibble first** |
-| width | 256 pixels |
-| cell | **8 wide by 14 tall**, origin (0, 0) |
-| DQ4 atlas size | 16,128 bytes, 126 rows, 9 bands |
-| slots | **288**, of which **268** are non-blank |
-| Latin capitals | **13**, at slots 26 through 38 |
+The atlas is a 4bpp image carried in the archive's type 1 sub-blocks. Its geometry, cell
+layout, the two-glyphs-per-cell packing and the contents inventory are in `docs/FONTS.md`.
 
-MEASURED, gate 17.
-
-Geometry was derived, not assumed. Byte-equality autocorrelation peaks at a stride of 128
-bytes, which is 256 pixels at 4bpp. Column ink minima land on `x mod 8 == 0` far more often
-than on any other residue, 29 times against 13 for the next best. Rendering high nibble first
-breaks every vertical stroke into a dotted line. MEASURED, Phase 3b.
-
-### The drop shadow is inside the cell
-
-The rightmost column and the bottom row of each cell carry the glyph's drop shadow, not the
-letterform. Column 0 is empty on eleven of the thirteen capitals. MEASURED, Phase 3b.
-
-For width calculations: cell advance is 8 pixels, the letterform body occupies columns 1
-through 6, **effective body width is 6 of 8**, or 7 of 8 if the shadow is counted.
-
-### What the atlas contains
-
-> **CORRECTED, Phase 22.** This section previously read:
->
-> > "The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a strictly
-> > ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
-> > absent from this atlas."
->
-> That is wrong, and so is everything built on it. See section 11's retraction.
-
-**Every cell holds two glyphs, one in each 2-bit plane of the 4bpp pixel.** Bit 0 of a
-character's font descriptor selects which is visible, by choosing a CLUT. Reading a cell as a
-single 4bpp image superimposes both, which is exactly what produced the "13 capitals" reading:
-the alternating, descending run was the even and odd planes of consecutive cells.
-
-**The atlas carries all 26 Latin capitals, all 26 lowercase and all 10 digits.** MEASURED, by
-reconstructing the game's own font table from executable bytes and rendering each glyph from
-the cell and plane its entry names. Gate 17 asserts 62 of 62.
-
-```
-Ａ 39.0  Ｂ 38.1  Ｃ 38.0  Ｄ 37.1  Ｅ 37.0  ...  Ｚ 26.1      (cell.plane)
-ａ 26.0  ｂ 25.1  ｃ 25.0  ｄ 24.1  ｅ 24.0  ...  ｚ 13.1
-０ 44.0  １ 43.1  ２ 43.0  ３ 42.1  ...            ９ 39.1
-```
-
-288 cells, 268 non-blank, so up to 536 glyph slots; the font 1 table names 533 of them. The two
-blank cells, 6 and 7, are named by no code, and their four descriptors are among the six the
-table never uses. The table's unused half-cells and the image's blank cells are the same cells,
-measured by two independent routes.
-
-The 65 to 90 percent per-cell ink in the lower bands, once flagged as suspicious for a glyph
-sheet, is simply two glyphs superimposed.
-
-**Kanji.** The earlier "129 kanji at 8 x 14" was counted on the superposition and is not
-reliable. What is measured is that **18 of the leaves in text id 0x006C's own script have no
-font 1 entry at all**, and 14 of those are supplied by that block's own embedded font 2 table
-(section 15). This atlas was never the only kanji source.
-
-The remaining slot classifications, kana against symbols, are still by ink density and height
-**proxy**: INFERRED.
+What belongs in this section is the one type 1 finding that is not about fonts.
 
 ### The 60 01 01 80 band
 
@@ -1498,139 +1438,13 @@ yet found, and three such systems have now been found the same way, by locating 
 
 ## 15. Rendering
 
-How a character code becomes pixels. None of this was documented before Phase 21; the sections
-above describe the atlas image, this one describes the path that reads it.
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
 
-### 15.1 Two fonts, selected by a mode byte
+Both font tables, the chained hash lookup, descriptors, the atlas path, the run length
+payload, the per-block font supplement and the leaf space wall are in `docs/FONTS.md`.
 
-| | font 1 | font 2 |
-|---|---|---|
-| registered from | `0x800B2A3C` | `0x800B3600` |
-| font record | `0x800B2A58` | `0x800B361C` |
-| hash modulus | 137 | 29 |
-| entries | **533** | **521** |
-| chain stride | 4, code at +2 | 8, code at +4 |
-| cell | fixed **8 x 14** | per glyph, up to 16 x 16 |
-| pixels | resident 4bpp atlas, two glyphs per cell | 2bpp run length, expanded per character |
-| advance | fixed 8 | per glyph, from the entry |
-
-Both are keyed by **fullwidth Shift-JIS codes** and neither contains any code below 0x8000.
-Font 2 covers the same code space as font 1, including all 52 Latin letters, with proportional
-widths: capitals mean 9.3 px, lowercase 7.4, digits 7.7, kanji 11.9.
-
-**THE MESSAGE BOX DRAWS FROM FONT 2. MEASURED on hardware, 2026-08-22.** Three separate edits to the
-font 1 table had zero effect on a dialogue box and one edit to font 2 rendered, on the same disc in
-the same box. **Everything this section records about font 1 is correct and describes font 1**, which
-the same boot shows the menus use; it does not describe the message box. The two tables overlap
-heavily, 434 codes of 533 and 521, which is why the difference went unnoticed for twenty-five phases.
-
-**Font selection is a caller-set mode, not a property of the character.** At `0x8002D620` the
-drawing routine loads a byte from the text state at `+131` and compares it against 1 and 2:
-
-```
-0x8002D620  lbu a0,131(s0)
-0x8002D638  beq a0,s3,0x8002D650      ; s3 = 1 -> font 1
-0x8002D640  beq a0,fp,0x8002D6E4      ; fp = 2 -> font 2
-```
-
-The same character code goes to whichever font is active.
-
-### 15.2 The lookup
-
-`0x8008F7B0`, a chained hash. `bucket = code % modulus` via `divu` and `mfhi`; the bucket
-halfword is a **self relative** offset to a chain; a zero code terminates the chain. Two chain
-layouts, selected by whether the record's cell width and height at +20 and +22 are both nonzero.
-
-**The walk is bounded on every axis**: 12 slots, `slot+20` records per slot, and a zero-code
-terminator per chain. A code with no entry returns 0, the caller returns -1, nothing is drawn
-and the pen does not advance. There is one unbounded hazard, `break 0x1C00` at `0x8008F830` on
-a zero modulus.
-
-That bounding only holds while the chain data is well formed. A bucket array pointing at
-arbitrary bytes walks arbitrary memory; see 15.5.
-
-`dq4/fonts.py` reconstructs either table from executable bytes.
-
-### 15.3 Descriptor to texture coordinates
-
-For font 1 the descriptor is a dense index over glyphs:
-
-```
-cell  = descriptor >> 1
-plane = descriptor & 1        selects the CLUT, which selects which glyph is visible
-U     = (cell % 32) * 8
-V     = (cell / 32) * 14
-```
-
-MEASURED at `0x80087364` to `0x800873BC`. This **independently confirms the atlas geometry** in
-section 8, which had been derived from the image alone: 32 columns of 8 pixels, 14-pixel rows.
-
-One character emits one 20-byte GPU packet: command 0x65, textured rectangle, W 8, H 14, with
-the CLUT id at +14 taken from a table at `0x800E7810`.
-
-### 15.4 Advance
-
-Both fonts share one instruction, `addu a0,a0,s5` at `0x800876B8`. Only the source of `s5`
-differs: font 1 hardcodes `addiu s5,zero,8` at `0x800872E8`, file offset 0x06FBE8; font 2 reads
-`lbu s5,6(a1)` from the chain entry. So variable advance is already supported by the renderer
-and font 1 simply does not use it. Note that `s5` is also the primitive width register, so
-changing the immediate would clip the sampled rectangle, not merely tighten spacing.
-
-### 15.5 The embedded per-block font table
-
-**Every map text block carries its own font 2 supplement.** This is the structure section 10
-carried for a long time as "the per-kanji record table at `d + 32`".
-
-`register_block` at `0x8008F178` registers text blocks with the same header shape as font
-blocks, so `block+12`, which is `d` for a text block, becomes the record count and record array
-pointer. The block record at `d + 4` is a real font record with font id 2.
-
-| field | for text id 0x006C |
-|---|---|
-| record at `d + 4` | `+0` bucket array offset **984**, `+4` glyph payload offset **1124**, modulus 2, font id 2 |
-| bucket array | `block + 984` |
-| chain entries | `block + 988`, which is `d + 32`, 15 entries of 8 bytes |
-| entry layout | u32 descriptor, u16 code at +4, u8 width at +6, u8 height at +7 |
-
-0x006C supplies 15 kanji at 12 x 13 and 11 x 8, and **14 of the 18 leaves in its own script have
-no font 1 entry**, so the scene cannot draw its own dialogue without this table.
-
-**The `+0` and `+4` fields are offsets from the block base.** Anything that moves `d` must move
-them with it. Copying the region verbatim while `d` moves points the bucket array at whatever
-now occupies that offset; in one build it landed inside the tree pair array and the chain walked
-to offset 33,821 in an 1,804-byte block. MEASURED, Phase 26.
-
-### 15.6 The leaf space wall
-
-Relevant to anyone attempting English. `0x8008F3BC` returns a character, and its Huffman path
-ends with:
-
-```
-0x8008F594  beq s1,zero,0x8008F5A0      ; END skips the ori
-0x8008F59C  ori s1,s1,0x8000            ; file offset 0x077E9C
-```
-
-**Every non-zero leaf has bit 15 set unconditionally**, so the Huffman path can return only
-0x8000 to 0xFFFF plus 0x0000 for END. A stored leaf of 0x0041 comes back as 0x8041.
-**Halfwidth ASCII is unreachable from compressed text**, and that single `ori` is the wall any
-workaround has to route around.
-
-Of that space, 0xFE01 to 0xFEFF is consumed by the phrase dictionary (section 5) and 0xFF00 to
-0xFFFF by control codes (section 6).
-
-The engine **does** have a single-byte path. When the state word is negative, `0x8008F3BC` reads
-raw Shift-JIS and classifies lead bytes at `0x8008F3F0` to `0x8008F414`, returning a single byte
-of 0x00 to 0xFE from `0x8008F4E8`. It is not reachable from compressed text, and since neither
-font table contains any code below 0x8000, such a value would miss both fonts and draw nothing.
-
-### 15.7 Line metrics
-
-**Font 1 renders every character in 8 pixels**, kanji included. "Fullwidth" names a region of
-the Shift-JIS **code** space, not a rendered width. Worth stating plainly, because assuming
-otherwise cost this project three phases of misdirected work.
-
-The longest line the game draws anywhere in its own script is **24 characters**; the 99th
-percentile is 18. MEASURED over 67,020 lines. At 8 pixels that is 192 of the 320 available.
+What remains here is the one subsection that is about compression rather than rendering.
 
 ### 15.8 Recompression and alignment
 
@@ -1811,86 +1625,14 @@ card manager renders it, not the game.
 
 ---
 
-## 15e. Font 2, the dialogue font: the table, the descriptor and the payload
+## 15e. Font 2, the dialogue font
 
-MEASURED, Phases 59 to 61. **The message box draws from font 2.** Everything section 15 records about
-font 1 describes font 1, which the menus use.
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
 
-| | |
-|---|---|
-| registered from | `0x800B3600`, record at `0x800B361C` |
-| entries | **521** as shipped |
-| modulus | **29** |
-| stride | **8** |
-| entry layout | descriptor u32 at `+0`, **code u16 at `+4`**, width u8 at `+6`, height u8 at `+7` |
-| `cell_w`, `cell_h` | 0 and 0, which is what selects the 8-byte stride |
-| payload base | `record.glyphs` = `0x11A0`, so `0x800B47A0` |
-
-### The descriptor
-
-    bits  0..19   a PIXEL index into the payload, 2 bits per pixel
-    bits 20..27   the registration SLOT
-    bits 28..31   the RECORD index within that slot
-
-**The high 12 bits are ZERO in the shipped image because the LOOKUP writes them at runtime.**
-`0x8008F8E8` to `0x8008F900` masks with `0xF00FFFFF`, ors in the slot, masks with `0x0FFFFFFF`, ors
-in the record index and stores the descriptor back. The table patches itself on first use.
-
-The expander resolves the payload as `[slot+0] + [record+4] + (index >> 2)`, word aligned, with the
-starting bit at `(index * 2) & 0x1F`.
-
-### The payload encoding
-
-Read at `0x8008FA30` to `0x8008FB40`:
-
-    read 2 bits -> value
-    if value != 0:  run = 1
-    else:           read 2 more bits, run = those + 1, so 1 to 4 zeros
-    emit `run` pixels of `value`, until width * height pixels are emitted
-
-Validated against six glyphs of known shape, and round-tripped on two authored glyphs.
-
-### THE DONOR RULE, and why it stops mattering
-
-A code substituted into an existing entry must satisfy `new_code % 29 == old_code % 29`, or the entry
-leaves the bucket it physically sits in and is never found. The miss is silent. **521 of 521 shipped
-entries obey it.**
-
-**But an entry can be APPENDED instead, and then the rule does not apply.** The chain region
-`0x800B3670` to `0x800B47A0` is exactly packed, 550 slots for 521 entries and 29 terminators, with no
-gaps, so no chain grows in place. **The bucket head is an UNSIGNED u16 SELF-RELATIVE offset**, so a
-chain can be copied whole into free space with one extra entry and a terminator, and one halfword
-rewritten. Nothing existing moves.
-
-The record's entry count at `+14` is **never read** by the lookup or the expander, so it does not
-need updating.
-
-> **WRONG, CORRECTED PHASE 62, and it cost a boot.** This section said there were 4,076 bytes of
-> free space at `0x800B9248`. **That region is the malloc HEAP.** `0x8009A1CC` calls `0x800A5EA0`,
-> which is `jr 0xB0` with `t1 = 25`, so it is BIOS `B(19h)` `InitHeap(0x800B9204, 4060)`. It ships as
-> zeros because a fresh heap is empty. A chain relocated into it is overwritten by the allocator, and
-> **every code in that chain is lost, not just the new one.** Measured on hardware: three shipped
-> letters vanished from the message box. **There is no free space in this executable's data segment
-> that has been shown to be free.**
-
-### The method that works, and it needs no free space at all
-
-MEASURED, Phase 62, gated in both directions.
-
-**The entry OVERWRITES THE BUCKET'S OWN TERMINATOR.** Nothing is relocated, no bucket head changes,
-and no byte outside the font 2 table moves. The cost: a MISS on that bucket now walks on into the
-next chain and stops at ITS terminator. **No false hit is possible**, because every code in the next
-chain hashes to a different bucket and is never looked up through this one. **The chain must have a
-successor, so never do this to the last chain in the array.**
-
-**The payload OVERWRITES the stream of a glyph that is never drawn.** Streams are packed contiguously
-and a donor rarely starts on a word boundary, so write the bits **at the donor's own bit offset**
-rather than as bytes, or the neighboring glyphs are destroyed. The cost is real and must be stated
-every time: **the donor glyph decodes garbage afterwards and leaves the available inventory.**
-
-Proven in Phase 62: two codes added, `0x8166` and `0x8147`, **zero of the 521 existing entries
-altered, zero lost**, executable length unchanged, and **29 bytes differ from the shipped
-executable, none of them in the heap.**
+The font 2 table, its descriptor layout, the 2bpp run length payload, the donor rule, the
+fact that the region of zeros at `0x800B9248` is the malloc heap rather than free space, and
+the terminator method for adding a character are all in `docs/FONTS.md`.
 
 ---
 

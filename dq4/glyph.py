@@ -20,7 +20,7 @@ identified by hand. It has been REMOVED. It was reading superimposed planes, and
 the atlas in fact carries all 26 capitals, all 26 lowercase and all 10 digits.
 Derive the mapping from dq4.fonts.table() rather than from a hand-made dict.
 
-Format details are in FORMAT.md sections 8 and 15.
+Format details are in docs/FONTS.md.
 """
 
 CELL_W = 8

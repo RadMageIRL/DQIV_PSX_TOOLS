@@ -29,12 +29,14 @@ venv/
 Thumbs.db
 build/
 
-# docs/ is ignored wholesale. Two deliberate exceptions and no others:
+# docs/ is ignored wholesale. Three deliberate exceptions and no others:
 #   docs/images/*.png  the published screenshots, the only binary assets here
 #   docs/CODEX.md      the method rules, referenced by README.md and FORMAT.md
+#   docs/FONTS.md      fonts and text rendering, referenced by FORMAT.md
 # Phase reports are NOT published from this repo and must not be added here.
 docs/*
 !docs/images/
 docs/images/*
 !docs/images/*.png
 !docs/CODEX.md
+!docs/FONTS.md
