@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Fifteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Sixteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -105,6 +105,15 @@ live in the archive rather than the executable. The range was taken from the mes
 hand, so it could only ever contain them. **Enumerate a class from what the player sees, not from
 where the ones you have already found happen to sit**, and treat an index range as a summary of the
 answer rather than a definition of the question.
+
+Corollary, and it is the rule pointed at a PROPERTY rather than a search: **a property measured on
+one block is not a rule until it is measured across the population that shares its shape.** A rebuild
+path asserted that a block's dictionary ends on a 4-byte boundary, because the block it was written
+for does. Thirty-nine copies of another block ship with it ending two bytes earlier. Measured across
+all six blocks of that shape the real rule is different and simple, the payload end rounded UP to a
+multiple of 4, and it was 0 violations once asked properly. The cost of asking is one loop; the cost
+of not asking is a path that works on the block you aimed at and silently refuses or corrupts the
+rest.
 
 Corollary, and the cheapest one to fall for: **a search inherits every blind spot of the formatter it
 prints through.** A decoder emitted character and control symbols and silently dropped phrase
@@ -328,7 +337,20 @@ glyph, not the code. The two replacement codes here had their own font entries a
 against 11 for the characters they displaced, which is the whole difference between a relabelling and
 a defect.
 
-## 20. **[PSX]** Boot tests start from a cold emulator process
+## 20. **[PSX]** A rebuilt Huffman tree differs in SHAPE and not in QUALITY
+
+Rebuilding a tree from the frequencies of the same symbols gives a DIFFERENT pair array that encodes
+those symbols in EXACTLY the same number of bits: 41,370 both ways on one block, 43,519 both ways on
+another, same pair count and same node count in both. Huffman ties are broken arbitrarily and any
+tie-breaking order is optimal.
+
+So **tree-shape divergence after a rebuild is not a defect and is not evidence of one.** Do not spend
+a phase bisecting it. The practical consequence is for identity gates: a rebuild that must reproduce
+its input byte for byte has to REUSE the parsed pair array, because rebuilding the tree is not
+obliged to reproduce it and usually will not. Reusing it is what makes such a gate meaningful, and it
+still tests every other stage.
+
+## 21. **[PSX]** Boot tests start from a cold emulator process
 
 Not a reset, not a disc swap, not opening a file in a running window. **Starting a new game reloads
 save data, not the executable.** Asking whether a save state was used got a truthful "no" that was
