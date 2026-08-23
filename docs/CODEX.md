@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Twelve instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Thirteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -354,7 +354,22 @@ having only while every entry has a measured before and after.
 
 ---
 
-**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has twelve, rule 3 has four, rule 4 has three, rule 8 has
+Corollary, and it is the rule pointed at an INSTRUMENT rather than a search:
+**an instrument that uses the thing it is measuring as its own identity test
+cannot report a discrepancy.** Two of these in three phases, and they are the
+same shape as the enumeration corollary above. A figure for character advance
+was obtained by dividing a window's width by an assumed character count, so it
+could only ever reproduce that width and it silently absorbed every error in
+the assumption; it survived three phases and was contradicted the first time a
+window drew text whose length was known independently. An enumerator of live
+window records identified a record by matching its geometry against its
+template, so a record whose geometry had been overridden at runtime was not
+recognized as a record at all, and the tool reported perfect agreement while
+sitting on two overrides. **Before trusting an instrument, ask what it would
+report if the thing it measures were different from what you expect. If the
+answer is "nothing", it is not an instrument.**
+
+**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has thirteen, rule 3 has four, rule 4 has three, rule 8 has
 two. Everything else has one.
 
 Linked from `FORMAT.md` and from the working notes. **One authoritative location per fact**: nothing

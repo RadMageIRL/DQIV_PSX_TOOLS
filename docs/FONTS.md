@@ -401,6 +401,26 @@ sh   t1, 32(s1)           ; width, in units
 
 The scale is 8 in every record examined. The screen is 256 units wide.
 
+**THE TEMPLATE IS THE DEFAULT, NOT THE GEOMETRY.** A live window can carry
+values the template does not. Measured across five memory images: one window
+reads a width of 48 against a template of 160, and another reads a height of 40
+against a template of 16. Both are consistent across every image, so this is
+deliberate and not corruption.
+
+Consequences, in order of how badly each bites:
+
+* A capacity read off a template is only sound once you have confirmed that
+  window is not overridden, which needs a memory image with it on screen.
+* Editing the template of an overridden window is inert. The value is written
+  and then replaced at runtime.
+* An enumerator that identifies a live record by matching it against its
+  template cannot report a mismatch, because a mismatch stops it recognizing
+  the record at all. Identify records by their position in the window array and
+  report the comparison as a result.
+
+The live record holds its type at `+0`, x and y at `+0x1C` and `+0x1E`, and
+width and height at `+0x20` and `+0x22`. Window records sit 200 bytes apart.
+
 **Two grids, and confusing them is the trap here.** Template geometry is in
 8-unit grid cells. Menu text advances 12 units. So a template width of 12 is 96
 units, which is 8 text cells, and 8 does not divide 12.
@@ -432,15 +452,23 @@ column ends, and lengthening the left column pushes the right column right.
   Immigrant Town recruit roster.** None of these have been located in the
   template table.
 
-- **A measurement that does not reconcile.** The item list window resolves to
-  96 units, which at a 12-unit advance is 8 text cells, and the display draws an
-  equip marker and a cursor before the name. That leaves roughly six cells for
-  the name itself. But the game's own item names reach nine characters. Nine
-  plus a prefix does not fit in eight. One of the following is true and it has
-  not been settled: long item names draw in a different window than the one
-  observed, the marker and cursor are drawn in a narrower font than the name, or
-  that window uses an advance other than 12. Do not rely on the 8-cell figure
-  for the item class.
+- **SETTLED. The item list holds 9 characters.** The earlier 8-cell figure was
+  wrong for a specific reason worth recording: the 12-unit advance it rested on
+  was obtained by dividing a window's width by an assumed character count, which
+  is the width it was meant to explain. There is no 12-unit advance. Font 1
+  advances a fixed 8 units and font 2 advances per glyph, both read from the
+  draw path. The item list is 96 units, draws through font 1, and the shipped
+  game puts 9-character names in it.
+
+  It cannot be widened. The list spans x 72..168 and the windows that draw the
+  gold and the item description begin at exactly 168, so every widening collides
+  with both. All four windows sharing the item-list geometry are 96 units.
+
+- **The equip screen has never appeared in a memory image.** It draws item names
+  and if it is narrower than the item list it governs instead. Two of the four
+  item-list shaped windows were seen live at the same position and both are 96
+  units, so the likeliest case is that the budget is the same, but that is not
+  the same as having measured it.
 
 - **Fifteen window templates whose builder addresses point into overlays** that
   were not resident in the memory images examined, so their contents were never
