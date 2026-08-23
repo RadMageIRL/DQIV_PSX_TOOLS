@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Nine instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Twelve instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -78,6 +78,34 @@ every lowercase letter**, which sat in a different code range entirely. The two 
 instrument VALIDATES, which is worse than one that fails**, because a failure sends you looking and
 a pass sends you on. The searches that came back empty were searching for mixed-case words that no
 single-key cipher could have matched.
+
+Corollary, and it is the rule pointed at a SEARCH: **a search whose candidate set is derived from its
+own premise cannot find anything outside it.** A walk meant to enumerate a scene's text blocks
+selected sectors *by whether they referenced a block already known*, so it could only ever return the
+set it started from, and it did: four blocks, "no extras". A fifth existed, 85 sectors past the
+arbitrary window the same walk used. **It was found by the cheap external check instead, reading a
+line off a screenshot and grepping.** Before trusting an enumeration, ask what it would have to be
+told in order to find something you have not already got.
+
+Corollary, and it has now cost four phases in six: **before rewriting any referrer, enumerate every
+POPULATION that can hold one, and prove the enumeration is not seeded from what you already have.**
+Three builds in a row scoped a search to the population already in hand: twice to the executable
+alone when the archive held four times as many references, and once to a set of sectors selected by
+whether they referenced a block already known. **Each time every gate passed, because the checker was
+handed the writer's list.** The fix is structural, not attentional: the checker must take its list
+from the PRISTINE artifact and never from the build, so that a reference the build never knew about
+is still checked. A gate built that way failed the bad disc at 4,631 of 5,833 and passed the good one
+at 5,833 of 5,833; the gate it replaced passed both.
+
+Corollary, and it is the sharpest form of the rule: **a search can be complete over every population
+and every alignment and still be complete over the wrong THING.** Four phases enumerated references
+to a text block by looking for the assembled 32-bit word, widening the search each time to more
+populations, more sub-block types, every byte alignment. The count kept rising and the answer stayed
+wrong, because **a compiler cannot emit a 32-bit immediate in one instruction**: menu code builds the
+reference with a `lui`/`addiu` pair and the assembled word never exists in the image at all. The
+missing references were not hiding in an unsearched region; they were not words. **When an
+exhaustive search returns zero for something that demonstrably happens, stop widening the search and
+question what you are searching FOR.**
 
 ## 2. Check a hypothesis against BOTH halves of the symptom before testing it
 
@@ -326,7 +354,7 @@ having only while every entry has a measured before and after.
 
 ---
 
-**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has nine, rule 3 has four, rule 4 has three, rule 8 has
+**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has twelve, rule 3 has four, rule 4 has three, rule 8 has
 two. Everything else has one.
 
 Linked from `FORMAT.md` and from the working notes. **One authoritative location per fact**: nothing
