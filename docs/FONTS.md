@@ -425,6 +425,43 @@ width and height at `+0x20` and `+0x22`. Window records sit 200 bytes apart.
 8-unit grid cells. Menu text advances 12 units. So a template width of 12 is 96
 units, which is 8 text cells, and 8 does not divide 12.
 
+### Text capacity per window, and the two grids
+
+Window width is in 8-unit grid cells; text advances 8 units in font 1 and per
+glyph in font 2. A window also carries **16 units of padding**, 8 on each side,
+so the usable text width is `w * scale - 16`.
+
+That model was solved from one window and then checked against others, which is
+the only reason to trust it: the field command menu holds its Japanese row and
+clips its English one at 96 units, bounding usable to `[80, 83)`, and 80 is
+exactly the Japanese row. It then predicts, without further fitting:
+
+| window | units | usable | holds | observed |
+|---|---|---|---|---|
+| a 72-unit description window | 72 | 56 | 7 characters at font 1 | Japanese uses exactly 7 |
+| a 48-unit verb menu | 48 | 32 | 4 characters | a 5th clips |
+| a 64-unit party list line | 64 | 48 | 6 characters | a 6-character line fits exactly |
+| a 48-unit party box | 48 | 32 | 4 characters | a 4-character name fits exactly |
+
+The last two were not used to derive the model.
+
+**The font a window uses can be deduced from what it holds.** A 72-unit window
+carrying seven kana must be font 1, because seven kana in font 2 need about 77
+units against a 56-unit interior. Likewise a 48-unit box holding a four-kana
+name is font 1, since font 2 would want 48 for the same four.
+
+### Line breaks and the dictionary, before you measure anything
+
+Two control codes break lines and they are not interchangeable. Dialogue uses
+one; the narrow description class uses another. Splitting on the wrong one
+reports a three-line box as a single line several times over budget.
+
+**Expand the phrase dictionary before counting.** A `{7Exx}` reference is one
+symbol and expands to several characters, so an unexpanded count understates any
+line that uses one. `dictionary.parse` then `dictionary.expand` resolves the
+whole corpus with zero unresolved references, so there is no excuse for
+measuring the packed form.
+
 ### The builder address is in the table
 
 `+24` holds the address of the routine that fills the window. That routine is
