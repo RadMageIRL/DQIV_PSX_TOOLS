@@ -366,7 +366,7 @@ is a strict subset: every one of her codes occurs. MEASURED, gate 16.
 | Code | Meaning | | Code | Meaning |
 |---|---|---|---|---|
 | 0x0000 | end of string, required terminator | | 0x7F2A | フレア |
-| 0x7F02 | new line plus tab | | 0x7F2B | ホイミン |
+| 0x7F02 | new line; see below | | 0x7F2B | ホイミン |
 | 0x7F04 | name decorator, starts named dialog; see 15c | | 0x7F2C | オーリン |
 | 0x7F0A | blinking cursor | | 0x7F2D | ホフマン, not always |
 | 0x7F0B | end of line, opposite of 0x7F0A | | 0x7F2E | パノン |
@@ -391,6 +391,49 @@ All fifteen name codes 0x7F20 through 0x7F2F are supported by decoded context, w
 disagreements. Two of the sharpest confirmations: `<7F04><7F29>「やや　戦士どの！<7F02>私です。アレクス`
 places the literal name immediately after the code, and `<7F04><7F24>は　<7F15>Ｇを　手に入れた！`
 independently confirms 0x7F15 as received gold. MEASURED, Phase 3.
+
+### 0x7F01 and 0x7F02, the two new lines
+
+**0x7F01 was absent from both tables above.** It is a plain new line, and it is
+what the executable's own text block uses.
+
+Read from the decoder rather than inferred from position. The handler at
+`0x80088A48`:
+
+```
+lw    v1, [0x800FFA40]     ; pen y
+lw    a0, [0x800E95B0]     ; line height
+addiu v0, zero, 8
+sw    v0, -1476(s3)        ; pen x = 8
+addu  v1, v1, a0           ; y = y + line height
+sw    v1, [0x800FFA40]
+```
+
+**The pen resets to x = 8, not 0.** That is the 8-unit left inset a window
+carries on each side, and it is worth noting because the same number can be
+reached from window arithmetic alone; here it is visible directly in the code.
+
+**CORRECTED: 0x7F02 is not "new line plus tab".** The width routine at
+`0x800886D8` tests a RANGE, `0xFF01 <= code <= 0xFF02`, and treats both
+identically: same reset to x = 8, same advance by one line height. Nothing in
+either path adds a tab or a different indent. `0xFF02` is compared exactly once
+in the whole executable, in that range test, so the executable's own dispatch
+never special-cases it.
+
+**The two differ by which renderer consumes the string, not by what they mean.**
+Measured across the whole disc:
+
+| where the string lives | 0x7F01 | 0x7F02 |
+|---|---:|---:|
+| archive scene blocks, 1,528 of them | **0** | **166,134** |
+| the executable's UI block | **144** | 1 |
+
+So scene dialogue uses one and the interface uses the other, essentially without
+exception. An authored string should follow the convention of the block it is
+going into; both will break a line.
+
+**0x7F0A remains as the table above states.** Its handler was not read, and the
+"blinking cursor" reading is not contradicted by anything measured here.
 
 ### The six additional codes
 
