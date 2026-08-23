@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Thirteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Fourteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -96,6 +96,15 @@ handed the writer's list.** The fix is structural, not attentional: the checker 
 from the PRISTINE artifact and never from the build, so that a reference the build never knew about
 is still checked. A gate built that way failed the bad disc at 4,631 of 5,833 and passed the good one
 at 5,833 of 5,833; the gate it replaced passed both.
+
+Corollary, third instance, and this one was not a search at all: **a CLASS is not a RANGE.** A set
+of on-screen messages was scoped as "indices 584 to 627, contiguous, no gaps" and authored to
+completion on that basis. The contiguity was real and proved nothing: six more members of the same
+class sit at indices 30 to 35, two hundred entries earlier, and twenty-two more occurrences of it
+live in the archive rather than the executable. The range was taken from the messages already in
+hand, so it could only ever contain them. **Enumerate a class from what the player sees, not from
+where the ones you have already found happen to sit**, and treat an index range as a summary of the
+answer rather than a definition of the question.
 
 Corollary, and it is the sharpest form of the rule: **a search can be complete over every population
 and every alignment and still be complete over the wrong THING.** Four phases enumerated references
@@ -264,7 +273,52 @@ was measured instead.
 Keep a list of dead hypotheses with what killed each one and where. Seventeen of them exist here so
 that nobody retreads them. It is worth as much as the list of what was found.
 
-## 18. **[PSX]** Boot tests start from a cold emulator process
+## 18. **[PSX]** In a per-block Huffman codec, DUPLICATED text is cheaper than distinct text
+
+This inverts the usual instinct and it is worth stating before anyone shortens a string to save
+space again.
+
+Each text block carries **its own** Huffman tree, built over that block's own symbol frequencies. A
+phrase that already appears in the block costs almost nothing to repeat, because every symbol in it
+is already frequent and therefore already short. A *shorter but different* phrase can cost more: it
+introduces symbols the block does not otherwise use, which lengthens their codes and every other
+code that shares a prefix with them.
+
+Measured, twice:
+
+- Translating six messages **into** a block that was 4 bytes from full left it 8 bytes **smaller**,
+  because the English reused vocabulary the block's other messages already carried.
+- Translating two duplicated strings identically produced a smaller block than translating them
+  distinctly, at equal character count.
+
+Two consequences. **Translate duplicates identically unless there is an editorial reason not to**,
+and **do not trim English on size grounds without measuring**: shortening a line by choosing rarer
+words makes the block bigger. Measure the block, not the string.
+
+## 19. What the build carries through unchanged is verified by nothing
+
+**The build's BASE is not the pristine artifact.** Gates that compare a build against the file it was
+built from cannot see anything already wrong in that file, and data the build copies without touching
+is data no gate ever looks at. Carrying data through feels like the safe path precisely because
+nothing happens to it.
+
+A diagnostic once substituted two characters throughout a text block to prove two new glyphs
+rendered. It was left in the build base. **67 occurrences of one character and 28 of another shipped
+as an apostrophe and a semicolon on every disc built afterwards**, in a block where 597 strings are
+carried through untouched and were therefore compared to nothing. Every gate passed every time,
+because every gate was handed the same corrupted base.
+
+Two rules follow. **Diagnostic edits go in a build, never in a base**, and if one must go in a base it
+gets a gate that fails until it is removed. And **gate the carried data too**: decode what the build
+copies and compare it to the pristine artifact, not to the intermediate. That check is cheap, it runs
+in a second, and it is the only thing standing between a stale experiment and a shipped disc.
+
+Corollary: **a substitution is only invisible if the replacement draws the same pixels.** Check the
+glyph, not the code. The two replacement codes here had their own font entries at 3 units wide
+against 11 for the characters they displaced, which is the whole difference between a relabelling and
+a defect.
+
+## 20. **[PSX]** Boot tests start from a cold emulator process
 
 Not a reset, not a disc swap, not opening a file in a running window. **Starting a new game reloads
 save data, not the executable.** Asking whether a save state was used got a truthful "no" that was
