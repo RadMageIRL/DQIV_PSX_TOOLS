@@ -314,7 +314,39 @@ Two consequences. **Translate duplicates identically unless there is an editoria
 and **do not trim English on size grounds without measuring**: shortening a line by choosing rarer
 words makes the block bigger. Measure the block, not the string.
 
-## 19. What the build carries through unchanged is verified by nothing
+## 19. **[PSX]** When a block is tight, reduce the ALPHABET before shortening the text
+
+The generalization of rule 18 and the reason it keeps surprising people. In a block whose text is
+one script, **every character of a second script is a NEW TREE LEAF**, and a leaf costs both its
+own tree entry and a lengthening of every code that shares a prefix with it. So the price of a
+translated line is dominated by **how many DISTINCT characters it introduces**, not by how long it
+is.
+
+Measured on a block with zero slack, translating eight strings:
+
+| draft | distinct characters | result |
+| --- | --- | --- |
+| written for register | 18 | over capacity by 52 |
+| same eight, minimal alphabet | 11 | fits, 4 bytes to spare |
+
+The two drafts say the same things at nearly the same length. **Dropping the full stop alone moved
+one draft from over-by-52 to fitting**, because the English full stop widens to a character the
+Japanese never uses while the exclamation mark, the question mark and the space widen to characters
+already in the block.
+
+So: **check which punctuation is already in the block before writing a line**, prefer words built
+from letters already spent, and reach for a shorter sentence only after the alphabet is as small as
+it will go. Shortening a line by choosing rarer words makes the block BIGGER.
+
+Corollary, a CLOSED ROUTE: **do not retune a phrase dictionary to fit a translation.** It was tried
+against a block with no room, in several scorings. Scoring phrases by symbols removed ignores that
+each costs two bytes of index plus two per symbol of payload, accepts anything used twice, and fills
+the payload to its cap: over by 1,788. Making the score cost-aware improved it to over by 1,184 and
+still lost, because occurrences are counted before substitution and long phrases cannibalise the
+short ones inside them. **The shipped table beat every alternative generated.** Emptying the table
+entirely was worth +40 bytes and was the only dictionary move that helped at all.
+
+## 20. What the build carries through unchanged is verified by nothing
 
 **The build's BASE is not the pristine artifact.** Gates that compare a build against the file it was
 built from cannot see anything already wrong in that file, and data the build copies without touching
@@ -337,7 +369,7 @@ glyph, not the code. The two replacement codes here had their own font entries a
 against 11 for the characters they displaced, which is the whole difference between a relabelling and
 a defect.
 
-## 20. **[PSX]** A rebuilt Huffman tree differs in SHAPE and not in QUALITY
+## 21. **[PSX]** A rebuilt Huffman tree differs in SHAPE and not in QUALITY
 
 Rebuilding a tree from the frequencies of the same symbols gives a DIFFERENT pair array that encodes
 those symbols in EXACTLY the same number of bits: 41,370 both ways on one block, 43,519 both ways on
@@ -350,7 +382,7 @@ its input byte for byte has to REUSE the parsed pair array, because rebuilding t
 obliged to reproduce it and usually will not. Reusing it is what makes such a gate meaningful, and it
 still tests every other stage.
 
-## 21. **[PSX]** Boot tests start from a cold emulator process
+## 22. **[PSX]** Boot tests start from a cold emulator process
 
 Not a reset, not a disc swap, not opening a file in a running window. **Starting a new game reloads
 save data, not the executable.** Asking whether a save state was used got a truthful "no" that was
