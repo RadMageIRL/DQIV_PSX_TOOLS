@@ -317,13 +317,32 @@ The tables are exactly packed. For font 2 the chain region runs `0x800B3670` to
 ### There is no free space
 
 The region of zeros at `0x800B9248` is not free. `0x8009A1CC` calls
-`0x800A5EA0`, which is `jr 0xB0` with `t1 = 25`, so it is BIOS `B(19h)`
-`InitHeap(0x800B9204, 4060)`. It ships as zeros because a fresh heap is empty.
+`0x800A5EA0`, which is `jr 0xB0` with `t1 = 25`, **so it is a BIOS call on
+table B, function `0x19`, with `a0 = 0x800B9204`.** It ships as zeros because
+the arena behind it is empty until something allocates.
 
-A chain relocated there is overwritten by the allocator, and **every code in
-that chain is lost, not just the new one.** Measured on hardware: three shipped
-letters disappeared from the message box. Treat no zero region in this data
-segment as free unless you have shown it is.
+A chain relocated there is overwritten, and **every code in that chain is lost,
+not just the new one.** Measured on hardware: three shipped letters disappeared
+from the message box. Treat no zero region in this data segment as free unless
+you have shown it is.
+
+> **THE ROUTINE'S NAME IS OPEN AS OF 2026-08-26. THE OWNERSHIP IS NOT.** This
+> passage used to read "so it is BIOS `B(19h)` `InitHeap(0x800B9204, 4060)`".
+> **MEASURED, `ref/psx-spx-docs/kernelbios.md`: `B(19h)` is `HookEntryInt(addr)`
+> (line 392, detail 1147), and `InitHeap` is `A(39h)` (line 235, detail 1770).
+> `InitHeap` appears nowhere in the B table.** MEASURED, the same disassembly in
+> `docs/PHASE62-...`: the recorded second argument `4060` comes from
+> `addiu v0,s0,4060`, **which writes `v0`, not `a1`**, leaving `a0` alone, which
+> is the arity `HookEntryInt(addr)` takes.
+>
+> **Nothing above this note changes.** The region is owned, a build proved it on
+> hardware at a cost of 36 codes, and **the terminator method below exists
+> because of that result and not because of the routine's name.** What is in
+> doubt is the name, the arity, and therefore the mechanism by which the region
+> gets written. **Answerable by reading `0x800A5EA0`'s caller and the B-table
+> entry the console dispatches, to its return.** Until then quote it as "owned
+> by a BIOS routine called through table B function `0x19`". Status in
+> `docs/BOARD.md`, flagged OPEN; codex rule 36 carries it as a near-miss.
 
 ### The terminator method
 
@@ -354,6 +373,32 @@ time the method is used, not treated as free.
 Two codes were added this way with zero of the 521 existing entries altered,
 zero lost, executable length unchanged, and 29 bytes differing from the shipped
 executable, none of them in the heap.
+
+### A WIDTH TOOL MUST SAY WHICH TABLE IT WALKED
+
+MEASURED 2026-08-26. **The two added codes are `0x8147` and `0x8166`, both width
+3**, so a build of ours has **523 font 2 entries against pristine's 521.**
+
+**A tool that sums glyph widths and walks PRISTINE charges the apostrophe as
+MISSING 61 times, and its run still looks clean.** That is the shape worth
+remembering: the wrong table does not produce an error, it produces a plausible
+report. The unit-width leg of the Chapter 1 gate walks the build under test for
+exactly this reason, and **it now prints which table it walked above its own
+results, on every run.**
+
+**Its fail-closed default is worth stating as a default rather than as a
+detail:** a glyph with **no** font 2 entry is charged the **MAXIMUM** width, not
+zero. **The leg therefore cannot pass something that would clip. It can only be
+too strict.**
+
+**And this confirms the 3-unit glyph from a direction the record never used.**
+The 3-to-13 width range was measured over the shipped table; the two glyphs this
+project added independently came out at 3.
+
+**A naming hazard, since the measurement was first reported as "the shipped
+build".** In this record **"shipped" means Enix's disc** and **"pristine" means
+its unmodified executable**. The 523-entry table is **OURS**, not the shipped
+game's. Read any figure of 521 versus 523 as pristine versus a build of ours.
 
 ### If you substitute instead of appending
 

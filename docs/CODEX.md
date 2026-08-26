@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Seventeen instances. The most expensive rule here. Its worst single instances cost twenty-five phases, fifteen phases, and a boot test.**
+**Eighteen instances. The most expensive rule here. Its worst single instances cost twenty-five phases, fifteen phases, and a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -62,9 +62,18 @@ negative is worse than having no result at all.
 Corollary, and it is the rule pointed at a REGION instead of a detector: **zero bytes in a shipped
 image are not free space.** A region can read as zeros because it is an arena that ships empty: a
 heap, a pool, a scratch buffer. Four kilobytes of zeros below the boot clear, with no statically
-resolvable write reaching them, looked like the safest space in the executable and were
-`InitHeap(0x800B9204, 4060)`. **Find the code that OWNS a region, not just the code that writes to
-it.** The owner here was one `addiu` and a BIOS call, two hundred bytes away from anything the
+resolvable write reaching them, looked like the safest space in the executable and were **owned by
+a BIOS routine reached through table B, function `0x19`** with `a0 = 0x800B9204`. **Find the code
+that OWNS a region, not just the code that writes to it.**
+
+> **THE ROUTINE'S NAME IS OPEN AS OF 2026-08-26 AND THIS RULE DOES NOT DEPEND ON IT.** This
+> paragraph used to name it `InitHeap(0x800B9204, 4060)`. The project's own disassembly puts the
+> call on table **B** at function **`0x19`**, while `ref/psx-spx-docs/kernelbios.md` says `B(19h)`
+> is `HookEntryInt` and puts `InitHeap` on the **A** table at `A(39h)`; the recorded second argument
+> came from an `addiu` writing **`v0`**, not `a1`. **The ownership is not in doubt** and was
+> established on hardware, where a build placed two chains in that region and shipped letters
+> disappeared. **Only the name and arity are.** Reasoning and status in `docs/BOARD.md`, flagged
+> OPEN. Rule 36's near-miss is this same discrepancy read as a method failure. The owner here was one `addiu` and a BIOS call, two hundred bytes away from anything the
 address scan reported, and the address scan was not wrong: nothing writes to a heap statically,
 which is exactly why the scan was silent. **The validating case is the one where the content is
 present, and for an arena that means at runtime, not in the image.**
@@ -78,6 +87,28 @@ every lowercase letter**, which sat in a different code range entirely. The two 
 instrument VALIDATES, which is worse than one that fails**, because a failure sends you looking and
 a pass sends you on. The searches that came back empty were searching for mixed-case words that no
 single-key cipher could have matched.
+
+Corollary, same shape and the domain is a PARAMETER RANGE rather than an alphabet: **A SWEEP THAT
+STOPS SHORT MEASURES THE SWEEP.** A compressor setting was swept over `{16, 32, 52, 64, 128, 256,
+512}` and reported that **48 of 55 carriers grow on an IDENTITY recompression, with no text
+changed at all**, one of them already past its sector slack. The finding was real, reproducible
+and about to shape three phases, and it named a sector as a blocker. **The shipped archive was
+packed at a chain depth ABOVE 512.** At 2048 the unchanged carrier reproduces the shipped length
+**exactly, +0**, and the authored English comes out **80 bytes SMALLER** than the Japanese it
+replaces.
+
+**The validating case was free and was never run: recompress the UNCHANGED shipped data and
+require it to reproduce the shipped bytes.** An identity recompression that does not reproduce
+its input has not measured expansion, it has measured the gap between the sweep and the packer.
+Anything a sweep reports outside the range it covered is a property of the range.
+
+**This is the general form worth carrying, and it spans more than one rule here: THE
+INSTRUMENT'S OWN LIMIT REPORTED AS A PROPERTY OF THE DATA.** Rule 4's fifth instance is its other
+face, a check whose reference came from its subject and therefore could not fail. **The two are
+not the same defect and the difference decides where to look.** That check could never return
+FAIL under any configuration. **This sweep could fail, did fail things, and returned a real
+number; what it could not do was see outside its own range.** When an instrument is silent, ask
+what it compares against. When an instrument answers, ask what it covered.
 
 Corollary, and it is the rule pointed at a SEARCH: **a search whose candidate set is derived from its
 own premise cannot find anything outside it.** A walk meant to enumerate a scene's text blocks
@@ -199,7 +230,9 @@ on a channel already known to work ended the ambiguity in a single boot.
 
 ## 4. A gate written from your own model only tests your own model
 
-**Four instances.**
+**Five instances.** The first four are the table below, gates that caught real faults. **The
+fifth is a violation rather than a catch** and sits under the corollaries: a check that could not
+fail.
 
 Gates that caught real faults all compared against an invariant **the shipped data exhibits**, not
 against an expectation derived from the model being tested.
@@ -219,6 +252,40 @@ Corollaries:
   pass.
 - **An identity check passes on a degenerate structure by construction.** Rebuilding X from X and
   comparing proves nothing about X.
+
+**The fifth instance is the sharpest and it lived inside a tool rather than in a gate script.** A
+repacker validated its output by reading an anchor value off **the disc it was building FROM**,
+then checking the output against it. Evaluated on a finished disc, that asks whether a sub-block
+agrees with itself. **It failed 0 of 23,828 sub-blocks on every disc ever built**, across four
+that were genuinely clean and thirteen that were not, and the same check corrected to read its
+anchor off the PRISTINE artifact fails exactly two sub-blocks on all thirteen bad discs and none
+on the four good ones.
+
+**What makes it worth recording is everything it was NOT.** It was not read wrongly, the way an
+honest report can be. It was not out of date. It was not calibrated too tight or too loose.
+**There was no configuration of it that could ever have returned FAIL**, so no amount of care in
+reading it would have helped, and the tell was available at any time for free: the check had
+never once fired.
+
+**A check that has never failed is not evidence that nothing is wrong.** It is a question about
+the check. Ask what artifact it compares against, and if the answer is "the one it came from",
+it is an identity test wearing a gate's clothes. **The general form: A CHECK WHOSE REFERENCE IS
+DERIVED FROM ITS SUBJECT CANNOT FAIL.**
+
+**Cost: it ran on every build for months, cost nothing to run, and returned PASS 23,828 times per
+disc, which is exactly why nobody suspected it**, while the defect it was blind to was dismissed
+twelve times on the strength of a related reading. **A check that cannot fail is worse than no
+check, because no check does not produce evidence of safety.**
+
+**And this is the line that routes a future defect to the right rule.** Rules 23 through 32 are
+all **honest instrument, wrong reading**: the tool told the truth and a reader drew a conclusion
+it did not support. **This one is a DISHONEST instrument. Nobody misread it. It returned PASS on
+thirteen defective discs.** There was no reader error available to make. So when a check is
+silent, do not look for the misreading, because there may not be one; **look at what the check
+compares against.** Rule 1's instrument corollary is the same defect pointed at a measurement
+instead of a gate, and it carries the second instance of this exact shape: an enumerator that
+kept only records whose live geometry matched their template, which hid every runtime override by
+construction and reported perfect agreement while sitting on two of them.
 
 ## 5. Every test build must target something reachable, and the report must say where
 
@@ -448,6 +515,55 @@ retraction the next phase had to open with. **A `Counter` over the values, one l
 ended it before the regression was written down. Print the distinct values of a set before
 reporting its size.**
 
+### Second instance, 2026-08-26: a census that charged one code with two roles
+
+**Two instances.** The first is a set whose members were all one repeated thing. **This one is
+harder and is the more common shape: the members were genuinely different from each other, and two
+DIFFERENT THINGS were wearing one code.**
+
+A census reported **96 strings in `0x048F` with a line under a 9-cell floor, 90 of them surviving
+fixes**, and the 90 were briefed as the population to work. **The Builder then retracted its own
+finding: eighty-nine of the ninety are not defects.** Its census **charged a runtime-substitution
+code as an unbounded noun everywhere the code appeared**, and that code has two roles the census
+could not tell apart.
+
+**The discriminator is STRUCTURAL, and this project already had it.** A description is a run of
+segments each TERMINATED by the code, so the string ENDS with it. An existing gate's leg 1 has
+skipped that class for phases using exactly this test, `scratch/p109/ch1/gate.py`:
+
+```python
+if not t or t.endswith("{7F11}"):
+    continue
+```
+
+MEASURED on the 325-string held revision:
+
+| | |
+| --- | ---: |
+| strings containing the code | **100** |
+| **ending** with it: DESCRIPTION, its own **7-cell** window | **90** |
+| **not** ending with it: RUNTIME substitution, a 21-cell line | **10** |
+
+**The ninety were also being measured against the wrong window by a factor of three.** MEASURED:
+248 shipped Japanese segments, longest **7**; 270 authored English segments, longest **7**; **0 of
+90 over.** Of the ten runtime-role strings, seven were under the floor and all seven are now
+authored. **The corrected distribution is 7 and 0, not 96 and 90.**
+
+> **The count was arithmetically right every time it ran. The set it named was wrong.**
+
+**THE TELL WAS IN THE CENSUS'S OWN OUTPUT THE WHOLE TIME: every one of the ninety ended with the
+same code.**
+
+**This widens rule 23's remedy by one word, and that is why it is worth its space.** "Print the
+distinct VALUES before reporting the size" would have found nothing here: the ninety are ninety
+different strings and a `Counter` over them returns ninety ones. **Print the distinct SHAPES.** A
+`Counter` over "what does this string END with" separates the two roles in one line.
+
+**And the part that is not about counting at all: the discriminator was already written down, in
+this project's own gate, and had been applied for phases.** The defect was not a missing test. **It
+was a test that lived in one tool and not in the one that produced the number**, which is a class no
+amount of care inside the second tool would ever have caught.
+
 ## 24. A gate that races what it checks is worse than no gate
 
 Second of the family in 23. The bytes were read correctly; they were not the artifact.
@@ -516,6 +632,539 @@ So: never `replace` on an empty slice, check the line count before and after eve
 **`grep` the text back out of the file on disk**. The write is not done until it has been read
 back. This applies to documents exactly as rule 4 applies to builds: the record is an artifact,
 and an unverified edit to it is an unverified build.
+
+## 28. UNCONFIRMED is a statement about the TOOL, not about the data
+
+**The fifth member of the family in 23, and its tool-shaped one.** In 23 through 26 a
+measurement is true and the conclusion drawn from it is not. Here the true measurement is **a
+tool's own honest report about itself**, which is the hardest case to doubt, because there is
+nothing wrong with it to find.
+
+A reference collector printed this on every build for **ninety phases**:
+
+```
+type 46 UNCONFIRMED (no structure known)   236945
+```
+
+**Every word of that was true every time it printed.** The exclusion was deliberate, and the
+module's own docstring said why: for this block the reference's top byte is `0x48`, which is the
+COP2 opcode range, so overlay code produces a quarter of a million false positives. Rather than
+silently keeping them or silently dropping them, the tool refused to classify them and **said
+so**. The count was real. The rule was a good rule.
+
+**What was never true was the reading: that "no structure known" meant "no structure exists",
+and therefore that this population could not be rewritten.** Nobody re-asked whether the premise
+still held, and by the time anyone did it had been overtaken by four independent measurements:
+
+- all 236,937 four-aligned candidates across all 284 sub-blocks of that type are **ONE value**,
+  and no sub-block holds more than one distinct value
+- in the loaded overlay they sit in **two contiguous clusters**, 797 words and 22, with **zero
+  outside**
+- they sit at **record strides**, each preceded by another reference word or a small integer
+- decisively, **the CPU was measured LOADING three of them as data** and passing them to the
+  resolver, which consumed them
+
+**Cost: a defect that survived TWELVE candidate hypotheses over many phases.** The population
+the tool declined to classify was the population carrying the fault. When the premise was
+finally re-asked, the fix was 62 lines added and 0 changed, and **the gate went silent on the
+first known-GOOD companion it has ever had**, with four known-bad discs still firing.
+
+**And the half that is easy to lose, because the obvious fix is the wrong one. FOUR-ALIGNMENT
+WAS NOT THE DISCRIMINATOR.** 236,937 of the 236,945 candidates were **already** four-aligned, so
+copying the neighboring type's test across would have kept essentially every false positive the
+original rule existed to reject. The discriminator that works is **value plus cluster bounds**.
+
+That it was not fitted to the data was proved rather than asserted: the threshold sits at 1,024
+against a largest intra-cluster stride of **616** and a smallest inter-cluster gap of **11,508**,
+and **every value between those two gives the identical answer of 236,937**. A discriminator with
+a wide plateau around the value you picked is measured; one that only works at the value you
+picked is fitted.
+
+**So: a tool reporting that it cannot classify something is posing a standing question, not
+returning an answer.** Give the refusal a date and the reason behind it, and re-ask whether the
+reason still holds whenever the surrounding measurements move. This is drift guard 7 pointed at
+an instrument instead of at a document: a stale dismissal is a claim believed because it is in
+the record, and this is a claim believed **because a tool said it, accurately**.
+
+## 29. A limit observed in output is not a limit of the system
+
+**The third member of 23's family found in a single phase, and unlike the other two it cuts in
+your favor.** Rule 28 is a TOOL's honest report read as a fact about the data. This one involves
+no tool and no misread report: it is **an OUTPUT's observed range read as the system's
+capacity**. Nobody made an error of measurement. The number was right about the thing it
+measured, and the thing it measured was not the thing everyone thought.
+
+A message box budget of 20 cells for a named box and 18 for an unnamed one governed **every
+authoring decision in this project**, across a prologue, three pilots and hundreds of authored
+strings. It was measured carefully, off a disc that had booted, and it is exactly right: **it is
+the maximum the shipped English prologue reached.**
+
+**What it measures is what ONE AUTHOR did.** It is a floor on the window, not the window.
+
+**The check that broke it cost one query, and it is the reusable half of this entry: ask whether
+the shipped ORIGINAL respects the limit you inferred.** It does not. On the very block being
+authored against, **20 lines of the game's own shipped Japanese exceed the 18-cell cap, and the
+longest runs to 21.**
+
+> **A cap the shipped game breaks twenty times is not that block's cap.**
+
+**So keep both numbers and never let them share a name.** The **BUDGET** is what an author has
+reached and is a real, useful thing to hold a draft to. The **WINDOW** is what the system will
+draw. Only the second can produce something on screen, and only the first was ever measured.
+
+**The cost is subtle and worth stating exactly, because it is invisible in the artifact.** It
+produced no defect. Nothing clipped, nothing overran, no build failed. **It produced unnecessary
+tightness**: line after line squeezed to 18 cells that could have run to 21, and every editorial
+loss taken to make that fit. Those losses are recorded in the record as window losses, and a
+reader going back to them should know that **they were partly paid for a wall that was not
+there.** A constraint that is too tight leaves no evidence of itself anywhere except in the
+prose it quietly made worse, which is why it survived so long and why nothing would ever have
+caught it.
+
+**The general test, then.** When a limit is inferred from output rather than read out of the
+system: **run it against the shipped original.** If the original breaks the limit, the limit
+belongs to the observer and not to the system. It is the same instinct as rule 9, read the other
+language, pointed at the same game instead of a different one, and it is one query.
+
+## 30. A search for a literal cannot find a value that is computed
+
+**The third of the family in 23 to be about an instrument's honest answer, and the one where the
+instrument is not even wrong about its own domain.** Line them up, because the difference is the
+whole entry:
+
+- **28** is a TOOL's honest report about ITSELF, read as a fact about the data.
+- **29** is a system's observed OUTPUT RANGE, read as its capacity.
+- **30** is a search's honest ABSENCE, read as the absence of the thing.
+
+The search here was correct. It found no literal **because there was no literal.** Nothing was
+broken, nothing was misreported, and no amount of care applied to the tool would have changed
+its answer. The fault is entirely in the assumption underneath the search: that the value must
+exist somewhere as a written constant.
+
+Twenty-two control codes stood unidentified, **two of them opening the boss scene's own
+strings**, and every per-code search came back empty. They were cracked by reading a **DISPATCH
+TABLE** instead: the engine tests the symbol against a threshold and, above it, indexes an
+8-byte-per-entry table with `code - 0xFF00`, taking flags from word 0 and a handler from word 1.
+It is the same route that had already resolved three other codes.
+
+> **Nothing compares these codes. They index.**
+
+There is no comparison instruction to find, because the engine never asks "is this code
+`0x7F43`". **It subtracts a base and multiplies by eight.** The value being hunted is
+arithmetic, not a literal, so a literal search is **structurally blind** to it and returns zero
+however many times it is run, on however many populations, at whatever alignment.
+
+**Cost: four searches returned empty before the table was read**, and the codes stood
+unidentified in the meantime, **blocking a tower and a boss scene from being authored at all.**
+Not a wrong answer that had to be undone later, which is the cheap kind: a true answer that
+stopped work.
+
+**The reusable half is a test, not a lesson. When a search returns zero, ask how the code would
+USE the value.**
+
+- **A value that is COMPARED appears as an immediate.** Search is the right instrument.
+- **A value that INDEXES never appears at all.** The thing to find is **the table's base and
+  stride**, not the value.
+
+**And this is Instrument QA's standing question with the answer already known.** Ask it here:
+*what would this search report if the code were not handled at all?* **Zero.** And what does it
+report when the code IS handled, by a table? **Zero.** An instrument that returns the same answer
+whether or not the thing exists cannot distinguish the two cases, which is the definition of
+**blind**, and a blind instrument is unsound however clean its output looks.
+
+**Relation to rule 1's search corollary, so the two are not mistaken for duplicates.** That one
+covers a value that exists but is SPLIT, a 32-bit reference a compiler must build from a
+`lui`/`addiu` pair, so the assembled word is never in the image. This one covers a value that is
+never built at all. **Split, and never constructed, are different failures with the same
+symptom**, and the same remedy: stop widening the search and go read what consumes the value.
+
+## 31. A self-flagged limit is worth acting on before it is worth arguing with
+
+**The family in 23 has a member that points the other way, and this is it.** 28, 29 and 30 are
+honest reports read wrongly **by a reader**. This is an honest report whose **own author named
+its weakness**, and the weakness turned out to be the entire finding.
+
+A census reported one line over its window. Attached to it, unprompted, was the limit: **the
+census had run against the authored SOURCE rather than a decode off a disc, and it said so, and
+it said to re-run it off the disc before anyone acted on it.**
+
+Step one of the follow-up was exactly that re-run. **The proposed fix was already shipped on all
+seven English discs. The defect did not exist.** The string had read correctly on every disc
+including the oldest on disk, and the phrase the finding was built on **appears in no source in
+the tree**, so it was never even the authored text. The census was measuring something that has
+never been on a disc.
+
+> **Step one of the brief inverted the brief, and the flag was the entire result.**
+
+**The cost is unusually clean in both directions, which is why this entry can state it
+symmetrically. Acting on the flag cost one re-run. Not acting on it would have shipped an edit
+to a string that did not need one**, into a scene that was already correct, on the strength of a
+number that was real and irrelevant.
+
+**Second instance, same author, same session.** A substitution width was unmeasured and it
+declined to guess, leaving the peer's figure in place and flagging it. The flag kept the number
+honest, and **it did not keep the line safe**, because a line authored to a width nobody has
+measured is at risk whichever number is written down. The better lesson is the one that author
+drew itself: **an unmeasured width is a reason to give the line MARGIN, not merely a reason to
+annotate it.**
+
+So, two halves, and the second is the one that is easy to skip:
+
+- **When a result carries a limit its own author attached, spend the cheap check FIRST.** Before
+  arguing with the finding, before scoping the fix, before briefing anyone. The author has
+  already told you where it is weakest, and that is free information nobody else can produce.
+- **A flag is not a remedy.** Annotating an unmeasured quantity records the risk; it does not
+  reduce it. Where the flagged quantity feeds a budget, take margin against it.
+
+**The reason this is worth an entry at all is that the incentive runs the wrong way.** A
+self-flagged limit reads as diligence and invites a nod rather than a test, and it arrives
+attached to a finding that is usually otherwise sound, which makes the flag the easiest part of
+the report to skim past. **It is the highest-value sentence in the report precisely because its
+author was the only person positioned to write it.**
+
+## 32. When two counts disagree, check what each was ASKED before checking either
+
+**Two instances, and a third that looks identical and is not. The third is in this entry on
+purpose**, because a clean set of three would make this rule look better sourced than it is, and
+because telling the two apart is most of the value.
+
+The reflex when two instruments return different counts is to go and find the bug in one of them.
+**That reflex spends a session and finds nothing, because in both real instances here BOTH
+INSTRUMENTS WERE CORRECT.** They had been asked different questions.
+
+**Instance 1: 9 against 27.** Same question, smaller population. Nine was the part that had been
+looked at; eighteen more had not. Neither number was wrong about what it covered.
+
+**Instance 2: 26 against 29.** The brief that produced the 26 asked for a **TAG-LINE** census by
+its own wording, so three name codes sitting on BODY lines were outside its question **by
+construction**. The re-run swept every subset of the name codes against three cap policies and
+found **no policy that lands on exactly 26**, which is the tell: when no configuration of the
+second instrument reproduces the first number, the difference is not a threshold, it is the
+question. The 29 contained all 26 by name with none missing.
+
+**And the near-miss, instance 3, which is a DIFFERENT FAILURE.** Four of five numbers in a brief
+moved when someone finally measured them. That is not two instruments disagreeing: **the brief's
+numbers had never been measured by anything.** They appear in no report; a search for them
+returns only the brief's own sentence. Someone labeled an unsourced sentence MEASURED and handed
+it on as a given.
+
+**The separating test is the same first move in both cases, which is why one rule covers them:**
+
+- In a **SCOPE** disagreement, **both numbers are real and answer different questions.** Find
+  the two questions and the disagreement dissolves.
+- In a **PROVENANCE** failure, **one number was never an answer to anything.** There is no
+  second question to find.
+
+**So: ask what each was asked. If one of them was not asked anything, that is the finding**, and
+it is a bigger one than the count.
+
+**The practical corollary, and it is what actually shipped in instance 2: when the counts are
+NESTED, fix the superset and do not adjudicate.** The larger set contained the smaller entirely,
+so acting on it could not leave anything in the smaller set unfixed. Declaring one instrument
+wrong was unnecessary, would have cost a phase, and would have been false. **An agent that
+notices two counts are nested does not need anyone to rule between them.**
+
+Related to rule 10, decompose a moving number until the arithmetic closes, and distinct from it
+in the first move: rule 10 assumes one derivation is faulty and takes it apart. **This one says
+check the QUESTIONS first, because when the questions differ there is no faulty derivation to
+find and taking either one apart is wasted work.**
+
+## 33. State a negative as a positive measurement over a named population
+
+**The converse of rule 1, and it is not the same rule.** Rule 1 is about whether an instrument
+COULD have found the thing. This is about the FORM the answer takes once it has run, and the two
+are independent: an instrument can be sound and its result still be stated in a way nobody can
+check.
+
+> **"I searched and found nothing" is unfalsifiable. "Across 306 distinct loadable images, not
+> one instruction forms the address of a specific entry" is a number someone else can reproduce
+> and disagree with.**
+
+That sentence settled whether a sector table has a second consumer. It does not claim
+thoroughness, it claims a **shape does not occur**, over a population it names and counts.
+**Completeness answered without appealing to effort.**
+
+**The form has three parts, and dropping any one returns it to an anecdote:**
+
+1. **The population, enumerated and counted.** Not "the code", but 306 images. A reader can
+   dispute the population, which is the point.
+2. **The shape, stated positively enough to be searched for by someone else.** Not "references to
+   this", but "an instruction that forms the address of a specific entry".
+3. **The count, which is allowed to be zero.** Zero over a named denominator is a measurement.
+   Zero over an unnamed one is a mood.
+
+**Where this project asked it badly, and both are already in this file under a different
+heading.** Rule 1's search corollary and rule 30 each record a search that returned nothing, and
+in both the response was to widen the search rather than to change its form:
+
+- A reference was hunted across more populations, more sub-block types and every byte alignment.
+  **Four phases, the count rising, the answer staying wrong.** What ended it was a positive
+  structural statement: **a compiler cannot emit a 32-bit immediate in one instruction**, so the
+  assembled word is not in the image at all.
+- Twenty-two control codes were hunted one code at a time. **Four searches came back empty.**
+  What ended it was again positive and structural: **nothing compares these codes, they index.**
+
+**Those two entries record how to DIAGNOSE a failed search. This one records what the answer
+should look like when you have one**, and in both cases the answer that finally worked had this
+shape rather than a bigger search behind it.
+
+**And the rule in use, refusing rather than asserting.** A reference tool's own docstring holds
+that a string with no entry is **UNRESOLVED, meaning no referrer has been FOUND, not that none
+exists.** When an exact fix depended on one such string being genuinely unreferenced, the work
+stopped there rather than spending the absence. **A negative you cannot state in this form is a
+negative you may not lean on.**
+
+**One thing this rule does NOT do, recorded because the counterexample is in this project's own
+history.** A bestiary was excluded three ways, with denominators on every leg (all 5,821
+decompressed sub-blocks, a structural test over all 23,828) **and a control that proved the search
+worked.** It was still wrong: the table was found later, in plain sight, because **7 of the 12
+probe names were not monsters in this game.** The form was right and the targets were not.
+**Rule 33 makes a negative checkable. It does not make it true, and it never replaces rule 1.**
+
+## 34. A holdout error is an ESTIMATE of error, not a BOUND on it
+
+**Related to 8 and 15 and different from both, and the difference decides the remedy.** Rule 8 is
+a model fitted to one case that fails elsewhere. Rule 15 is a threshold calibrated on one
+population and carried to another. **Here the model was right, the validation was real, and the
+number that failed to travel was the ERROR BAR ITSELF.**
+
+This instrument did everything the file already asks for. It ran a **proper holdout**: the same
+procedure applied to five blocks whose truth was already known, **with the error printed before
+the projection was used.** Worst holdout error **8.43 percent**. That is rule 1 satisfied, not
+violated.
+
+Then the real text was authored and measured. **The projection had named two blocks as growing
+and MISSED TWO MORE**, and the worst real error was **8.66 percent against the holdout's 8.43.**
+
+> **The holdout slightly UNDERSTATED the true worst case rather than bounding it.**
+
+**And rule 15's remedy is not available here, which is why this is its own entry.** "Calibrate on
+the population you are testing" cannot be done: not knowing that population's truth is the entire
+reason a projection exists. The remedy has to be a property of the SAMPLE instead.
+
+**The cause was measurable and the tell was available beforehand.** The projector sampled at
+**1.5876** English characters per Japanese character; the authored text came out at **1.7163**. It
+under-predicted the largest blocks, by **238 bytes** on one and **183** on another, **and both
+missed growers sit in that tail.** The holdout never reached the part of the range where the
+estimate was hardest.
+
+**So the test, and it costs one comparison:**
+
+> **Before quoting a holdout error as a bound, ask whether the holdout SPANS THE POPULATION'S
+> RANGE on the parameter that drives the estimate.** If the sample's own driving parameter differs
+> from the population's, the error figure describes the easy part of the range and the misses will
+> be in the tail.
+
+**AND THE HARM IS ASYMMETRIC, WHICH THIS ENTRY MUST NOT FLATTEN.** The projection **succeeded at
+the decision it was run for**: nothing needed relocation either way, and the two missed growers
+changed no course of action. **It failed only at the confidence it expressed.**
+
+**"The projection was wrong" would be a worse rule than the true one, which is that THE
+PROJECTION WAS RIGHT AND ITS ERROR BAR WAS NOT.** Read the first way, this discourages projecting
+at all, and projecting before authoring 316 strings was the correct call and remains so. Read the
+second way, it changes one sentence in the report: quote a holdout error as **what the procedure
+scored on the cases it was checked against**, and say which part of the range those cases covered.
+
+**A number that is honest about its own derivation can still be quoted as something it is not.**
+The failure was in the word "worst", not in the measurement behind it.
+
+## 35. A limit in the wrong UNIT is not merely wrong, it is blind in both directions
+
+**Two instances. The second is the shipped game measured in the RIGHT unit, and it resolves a
+contradiction the first one parked in the record as though it were a conclusion.**
+
+**Rule 29 is the near neighbor and this is a different failure, decided by a test rule 29 itself
+supplies.** Rule 29 is a limit **narrower than the real one in the SAME unit**: everything
+authored under it fits, the error is monotone and safe, and its remedy is to check the shipped
+original against the limit.
+
+**This is a limit in a unit the engine never accumulates**, and that changes both the consequence
+and the remedy.
+
+A text budget was carried as a **character count** for the life of this project. **The engine
+sums PROPORTIONAL GLYPH WIDTHS**, 3 to 13 units across 521 font entries, against a box measured
+at **224 units**.
+
+> **A character count is not the quantity the engine adds up.**
+
+**The consequence is the entry.** A wrong-unit cap is **simultaneously too tight and too loose**:
+
+- **Too tight for narrow text.** English averages **8.01 units** per glyph, and the widest of 348
+  authored lines runs 20 characters for **176 units, 79 percent of the box.** Every line squeezed
+  to the character cap gave up room that was there.
+- **Too loose for wide text, and this is the half no character gate can see.** **21 capitals plus
+  the drawn prefix is 232 units, 104 percent. It clips.**
+
+**A rule 29 error can never produce a clip. A wrong-unit error can, and this one does.**
+
+**AND RULE 29's REMEDY WOULD NOT HAVE FOUND IT, which is the decisive part.** Run it here and it
+returns nothing: charging the prefix against the shipped Japanese costs **22 extra violations in
+3,581 lines, 0.6 percent**, which falsifies nothing in either direction, **because the shipped
+language never runs tight enough against the box for the discrepancy to show.** Checking the
+original against a limit tests whether the limit is too tight. **It cannot tell you the limit is
+denominated in the wrong thing**, because both sides of that comparison are in the wrong unit.
+
+**So the test is not "is the limit right" but "is the limit in the quantity the machine
+accumulates".** Find the accumulator. Read what the code adds to it and what it compares it
+against, and denominate the budget in that. Here the instruction long read as the width test turned
+out to be **vertical**, a Y accumulator against box HEIGHT, and **every access to the box width in
+the formatter was read: it is used ONCE, for a centering offset.** There is no horizontal width
+check at all; the engine draws past the edge. **And that centering offset is itself never applied
+in any of the 55 observed states**, which is a second layer of the same lesson: reading what the
+code CAN do is not reading what it DOES. Geometry in `FORMAT.md` 15c-i.
+
+**A corollary that is the same defect at one remove: NEVER MULTIPLY A MEAN.** Once a budget is in
+units, a mean width times a character count is not a measurement of anything, and it fails in both
+directions on the same page. The mean is 8.01 for English and 11.6 for Japanese, and **21 times
+11.6 is 243.6 against a 224-unit box**, so the old character cap and the measured mean cannot both
+describe the same lines. **A gate must SUM THE REAL WIDTHS, glyph by glyph.** A gate that
+multiplies is a character gate wearing units.
+
+### Second instance, 2026-08-26: the shipped game measured in the right unit
+
+**The corollary above parked an unresolved contradiction and read as though it were a conclusion.**
+"21 times 11.6 is 243.6 against a 224-unit box, so the old character cap and the measured mean
+cannot both describe the same lines" is correct arithmetic and was the right reason to stop
+multiplying. **It also left a live inconsistency sitting in the record.** It is now resolved, and
+resolved is not retracted: nothing above is withdrawn.
+
+MEASURED: **long shipped lines use NARROWER glyphs.** A 21-glyph line runs **10.6** units per glyph
+rather than 11.6 and fits, at 223. **The game never writes a 22-glyph line at all**, which is what
+the old character cap was really recording. **243.6 never described a real line.**
+
+> **A mean is not constant along the axis you are multiplying it by. That is WHY the multiplication
+> fails. The entry above only knew THAT it failed.**
+
+**And the sharper half. Over 3,969 shipped lines, exactly one exceeds 224 units**: `0x048F[70]`,
+box 0, line 0, at **229 units, over by 5**, next widest 223. **It is the 20-glyph line, not the 21.
+Length did not predict which line it would be**, which is the same defect one level down: character
+count fails as a proxy for width even when you are only using it to guess where to look.
+
+**RULE 29's REMEDY IS PARTLY REHABILITATED HERE, and the paragraph above overstated its
+uselessness.** Above, running the shipped original against the limit "returns nothing". That is
+right in the CHARACTER unit and wrong as a general statement. **Run the shipped original against
+the limit once the UNIT is right and it returns exactly one line.** The order is the reusable part:
+**fix the unit first, then run rule 29's check.** In the wrong unit the check is uninformative; in
+the right one it produced the only shipped-game evidence this model has.
+
+**WHAT THIS INSTANCE MUST NOT BE FLATTENED INTO.** It is one line in 3,969, and **which window that
+string draws in was not measured.** The margin of 16 is measured on two window types only, and a
+240 px window with a margin under 11 would fit 229. **The honest form is "the shipped game VERY
+LIKELY draws past its own box edge, on one line in 3,969, by 5 units", not "the shipped game
+clips."** The geometry, the caveat and the test that would settle it live in `FORMAT.md` 15c-i,
+which is the authoritative location; the figures are quoted here only far enough to make the method
+point legible.
+
+**And the standing limit is untouched: the unit model PREDICTS and has not been booted.** A
+shipped-game measurement narrows a model. It does not boot one.
+
+## 36. Before deriving a fact, check whether the project already holds it
+
+**Two instances, both below, plus a near-miss of a different shape that supplies the third half of
+the remedy.** Named by Dos on 2026-08-26, after the third time in one week that the answer was
+already in the tree.
+
+**The cost is not a wrong answer, which is exactly why nothing else in this file catches it.** In
+both instances the fact was **already correct, already committed, and already being relied on by
+working code.** Every gate passed. Nothing was retracted for being false. **What was spent was a
+derivation that did not need to happen**, and in the first instance a brief built on the wrong
+population and **90 strings queued for authoring that did not need authoring.**
+
+### First instance: a discriminator that fourteen files were already using
+
+A census could not tell a description from a runtime substitution, because one control code carries
+both roles, and it reported **90 defects**. **Eighty-nine were not defects.** The retraction is rule
+23's second instance.
+
+**The test that separates the two roles is one line**, `scratch/p109/ch1/gate.py` line 64:
+
+```python
+if not t or t.endswith("{7F11}"):
+    continue
+```
+
+**It is not in one file. MEASURED: 15 files across 6 directories** in the `p108`, `p109` and `p114`
+scratch trees, earliest timestamped 2026-08-25, **14 of them using it as code.** The gate whose leg
+1 depends on it had been passing with it for phases.
+
+**The fifteenth is the Builder's own note**, `scratch/p109/f079/census079.py` line 21, inside the
+docstring of the retracted census itself: **"gate.py's leg 1 skips the class with
+`t.endswith("{7F11}")` and has done for phases. I did not use it."**
+
+**The same episode re-derived a SECOND thing the project already held.** The corrected 7-cell
+description budget was measured afresh out of the text, 248 shipped segments with the longest at 7,
+while `BOARD.md` had carried "the description budget is 7 characters per line" since Phase 87,
+reached there independently from window geometry. **Two facts, one episode.** It is not a separate
+instance and is not counted as one.
+
+### Second instance: a sharp form that was already a gate's expected value
+
+The record carried a loose statement, *zero overruns beyond +3 across 23,828 sub-blocks*. The sharp
+form is **`{0: 3089, 3: 2732}` over 5,821 LZS sub-blocks**, and the loose one was wrong twice over:
+a denominator of 23,828 for a claim whose population is 5,821, and **"beyond +3" stated as a BOUND
+where the measurement is an ENUMERATION** of two values and nothing else.
+
+**The sharp form was already `verify.py` gate 20's literal expected value**, line 367:
+
+```python
+two_valued = sorted(deltas.items()) == [(0, 3089), (3, 2732)]
+```
+
+**And it was already written out in prose in `FORMAT.md`'s compression section**, attributed to gate
+20. **Two locations, both committed, both correct.** When a Builder finally looked, the outcome was
+**CONFIRMED, not corrected.**
+
+### The near-miss, and it carries a THIRD remedy neither half covers
+
+**A third instance was proposed, did not survive checking, and the way it failed is worth more than
+the instance would have been.** A standing rule cited `ref/psx-spx-docs/kernelbios.md` line 235 as
+having documented a BIOS routine "the whole time", at a cost of a build and 36 font codes.
+
+**The cost half is real** and has phase-report citations behind it. **The "already documented" half
+is not.** The project's own disassembly puts the call on BIOS table **B**, function **0x19**. The
+cited document says **`B(19h)` is `HookEntryInt`**, and puts the named routine on the **A** table at
+`A(39h)`, which is what line 235 actually holds. **The document was consulted. The citation does not
+resolve to the claim.**
+
+> **Check that the citation RESOLVES, not merely that one exists.**
+
+**The conclusion built on it is untouched**, because the region being owned rather than free was
+established on hardware and not from the routine's name. **A broken citation does not cost you the
+conclusion. It costs every future reader who follows the pointer and finds something else**, and
+each of them pays it again. Status and the reasoning are in `docs/BOARD.md`, flagged OPEN.
+
+### Why this is an entry and not a note
+
+**The nearest thing this file had was not in this file.** The standing instruction to read
+`ref/psx-spx-docs/` before deriving console behavior lives in the team document. **The codex said
+nothing at all about looking before deriving.**
+
+**And what the codex DID say points the other way.** Rule 6 carries "prior documentation is a source
+of hypotheses, not facts", which is true and was paid for. **Stated alone, it reads as license.**
+This file warned against trusting inherited documentation and said nothing about failing to look,
+and the two have to stand together or the first one excuses the second.
+
+- **Rule 6 governs what you may CONCLUDE from something you found.** A found fact is a hypothesis
+  until it is measured.
+- **This rule governs whether you LOOKED AT ALL.** Not looking is not skepticism.
+
+**The three halves of looking need three different remedies, which is why folding this into the
+outward-facing instruction would have lost the useful part:**
+
+| | what you are looking for | the remedy |
+| --- | --- | --- |
+| **outward** | console behavior, in a document you KNOW exists | go read it |
+| **inward** | a fact you do NOT know the tree holds | **grep before you derive** |
+| **either** | a claim that already cites a source | **follow the citation and check it lands** |
+
+**The inward half is the hard one, because it has no natural trigger.** You cannot go and read a
+document you do not know exists. **What you can do is grep**, and both instances say what to grep
+for: **the discriminator you are about to write, and the number you are about to derive.** Each was
+one grep. Each would have returned a hit.
+
+**The tell that you are in this rule's territory: you are about to measure something the project
+must already have needed in order to get this far.** A gate that passes already contains the test it
+passes on. A number quoted in a phase report already came from somewhere.
 
 ---
 
@@ -601,11 +1250,42 @@ having only while every entry has a measured before and after.
 
 ---
 
-**27 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
-taken by counting the instances written under each entry: rule 1 has seventeen, rule 4 has four,
-rule 5 has two, rule 9 has two. Everything else has one. **Rules 23 through 26 are one family**,
-a measurement that is true and a conclusion that is not, and 27 is the same shape aimed at a
-document.
+**36 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
+taken by counting the instances written under each entry: rule 1 has eighteen, rule 4 has five,
+and **rules 5, 9, 23, 32, 35 and 36 have two each**. Everything else has one. **Rules 23 through 26 are one family**,
+a measurement that is true and a conclusion that is not, and **27 through 31 are that family
+aimed at five different honest reports**: a script's success line, a tool's own report about
+itself, the observed range of a system's output, a search that returns zero, and a limit the
+report's own author attached to it. **31 is the one that points the other way**, where the
+honest report was read wrongly by nobody and the flag was the finding. **32 stands apart from
+that family**: there the reports do not disagree with reality, they disagree with each other, and
+both are right. **33 is the converse of rule 1**: rule 1 asks whether an instrument could have
+found the thing, and 33 asks what form the answer takes once it has run. **34 sits beside 8 and
+15**, the three ways a number measured on one population misleads about another, and it is the
+one where the number that failed to travel was an error bar rather than a model or a threshold.
+**35 is rule 29's near neighbor and a different failure**: 29 is a limit too narrow in the right
+unit, which is monotone and safe, while 35 is a limit in a unit the machine never accumulates,
+which is blind in both directions and can clip. **36 is the one rule here that is not about getting
+a measurement wrong**: every other entry describes an answer that was wrong, misread, or wrongly
+scoped, while 36 describes a correct answer arrived at twice. **Its near neighbor is rule 6's "prior
+documentation is a source of hypotheses, not facts", and it points the opposite way**: 6 governs
+what you may conclude from what you found, 36 governs whether you looked. The count above was taken by counting the `## <n>.` headings in this file, not by
+adding one to the previous figure.
+
+**CORRECTED IN PLACE, 2026-08-26, and it is this footer's own defect a third time.** The instance
+line read "rule 5 has two, rule 9 has two. Everything else has one" while **rule 32's own body has
+said "two instances" since it was written.** The list was maintained by adding the rule that had
+just changed rather than by re-counting, so a rule that gained its second instance without the
+footer being touched stayed invisible. **Rules 23 and 35 each gained a second instance on
+2026-08-26**, and the list above was then taken by grepping every "instances" sentence in the file
+and attributing each to the `## <n>.` heading above it, not by amending the previous list. Rule
+count was 35 at that point, counted the same way.
+
+**RE-COUNTED AGAIN when rule 36 was added later the same day**, by the same grep rather than by
+adding 36 to the list it had just produced. **Rule count 36, from `grep -c "^## [0-9]\+\."`.**
+Reframing's 4 worked instances were counted in the same pass and are unchanged. **The instance
+list is regenerated, never appended to**; appending is precisely what hid rule 32 for as long as it
+was hidden.
 
 **Rule 1's seventeenth instance used to sit below this section**, stranded after "Maintenance"
 and outside the rule it belongs to, where a heading-based count could not see it and returned

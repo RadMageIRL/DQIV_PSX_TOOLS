@@ -498,6 +498,35 @@ over the table's contiguous strictly-valid runs rather than over its full extent
 entries sit in the last stretch, past the end of the second run. The three blocks in question
 hold the glyph atlas, so the atlas **is** loaded by the game.
 
+### 7b. Slack belongs to the SECTOR, not to the sub-block
+
+MEASURED on sector 34871. This dissolved a blocker that had stood since Phase 108, and the
+reasoning generalizes further than the one sector does, so it is recorded rather than the
+outcome alone.
+
+> **A tight sub-block with a compressible neighbor is not a tight sector.**
+
+A sector holds several sub-blocks and the cap applies to their TOTAL. Reading slack per
+sub-block therefore reports a blocker that may not exist:
+
+| | measured | read per sub-block | read per sector |
+| --- | --- | --- | --- |
+| sub 15, the carrier being edited | **+8** against **4 bytes** of slack | **BLOCKED**, and no `max_chain` rescues it | still +8, and it does not matter |
+| sub 3, an untouched neighbor | repacks losslessly at **-108** | irrelevant, nobody is editing it | **pays for sub 15 nine times over** |
+| the sector | **325,240** against a cap of **325,344** | | **FITS** |
+
+The +8 is real and a wider chain depth does not remove it. What removes the blocker is
+recompressing a neighbor that had no reason to be touched.
+
+**THE CONSTRAINT, and it is why this is not a general license.** It requires a neighbor that
+repacks **losslessly**, and that must be **verified per sector rather than assumed**. Not every
+neighbor has room and some make it worse: in this same sector **sub 4 would overflow it at
++464**, and nothing required touching sub 4. A neighbor is a lever only after its own identity
+repack has been measured.
+
+So before declaring a sector blocked: sum the sector, not the sub-block, and check whether any
+untouched neighbor repacks smaller. INFERRED from per-sub-block measurement; not built.
+
 ---
 
 ## 8. Glyph atlas
@@ -1082,6 +1111,43 @@ dictionary is 34,680.
 **Consequence: offsets must move, so referrer completeness is required.** Preserving encoded
 length is not an available strategy.
 
+### 11c. The alphabet cost model, as an equation
+
+MEASURED on `0x0485`, both relations exact. This is the size rule stated arithmetically rather
+than as a caution, and it is what forces a tight block's dictionary to be emptied.
+
+A block's header carries the payload start `d` and the block end `a`. For a tree over `L`
+distinct symbols:
+
+```
+npairs = 2L - 1                  a Huffman tree over L leaves has 2L - 1 nodes
+d      = e + 10 + 2*npairs       so d grows by 4 for every distinct symbol added
+```
+
+**`d` CANNOT SIMPLY MOVE.** The records in `[d, a)` hold **block-relative offsets**, so shifting
+`d` invalidates every one of them. `e` is therefore not free either: it is pinned by the same
+constraint from the other side. What absorbs the change is the code stream, and the general form
+is:
+
+```
+code stream bytes = (a - d) - c        with d = e + 10 + 2*(2L - 1)
+                  = (a - e - 10 - 2*(2L - 1)) - c
+```
+
+so, holding `e` and `a` fixed and letting `L` vary:
+
+> **EVERY DISTINCT SYMBOL COSTS FOUR BYTES OF CODE STREAM**, before it has encoded a single
+> character.
+
+`4L` is the rule and it is general. Any constant that appears when this is written out for one
+block (an `848` for `0x0485`, where `a = 1048` and `d = 856`) is that block's `a` and `e`
+arithmetic and does not transfer.
+
+**The consequence for authoring is the whole of it.** A shorter line built from rarer characters
+is bigger than a longer line built from characters the block already carries, because the rare
+character pays 4 bytes of tree before it pays anything for itself. Reduce the ALPHABET before
+shortening the text, and empty a phrase dictionary before trimming prose.
+
 ## 12. The tail record table and the lookup routine
 
 MEASURED, Phase 10. 855 of 1,528 text sub-blocks carry a tail table. Deduplicated by text id
@@ -1594,6 +1660,217 @@ before looking for a name therefore eats the name, and reports a population of n
 does not exist. Parse the opening run into a list of codes and look inside it.
 
 ---
+
+### 15c-i. THE BOX IS 224 UNITS AND FONT 2 IS PROPORTIONAL. A CHARACTER COUNT IS NOT THE QUANTITY THE ENGINE ADDS UP
+
+MEASURED 2026-08-26. **This supersedes the character cap this project has authored against since
+Phase 1.** Nothing computed against the old cap is retracted: every such figure is true of the
+character count it measured. What changes is that a character count was never the engine's
+quantity.
+
+**1. THERE IS NO HORIZONTAL WIDTH CHECK. The engine draws past the box edge.** The instruction
+long read as the width test is **VERTICAL**: a Y accumulator against box HEIGHT, confirmed on 55
+live blocks reading rows rather than columns. **Every access to the box width in the formatter was
+read, and it is used ONCE, for a centering offset.** Nothing stops a long line; it simply draws
+outside the frame. **And the shipped game very likely does exactly that, once**, which is under
+"The shipped game against the model" below.
+
+> **AND THE CENTERING LEG IS NOT TAKEN. MEASURED 2026-08-26, brief 088: the message box is NOT
+> centered in any of the 55 observed states. Text is LEFT ALIGNED at x = 0.** The centering is
+> gated on `137(s0) == 0` through the same test that gates the 12-unit pull back in point 4, and
+> `137(s0)` reads 0 in all 55. **The sentence above stays because it is true of the CODE**: the box
+> width is read once and it feeds a centering offset. **What it does not tell you is that the offset
+> is never applied in any state this project has observed.** Anything describing the dialogue box as
+> centering its lines is describing a leg these 55 samples do not take. Stated as a 55-sample
+> observation, not as a proof of impossibility.
+
+**2. The box is 224 UNITS and font 2 is PROPORTIONAL**, widths **3 to 13** across 521 entries **in
+the PRISTINE executable. A build of ours carries 523**, and which one a width tool walks is not a
+detail: `docs/FONTS.md` section 7.
+Kana average **10.7**; fullwidth lowercase Latin averages **7.4**.
+
+**3. The old cap of 21 was a statistic over JAPANESE**, whose glyphs average **11.6 units**.
+**English averages 8.01.** Over 348 authored lines the widest, at 20 characters, is **176 units,
+79 percent of the box.**
+
+**4. THE PREFIX AND THE HANGING INDENT. THE DRAWN PREFIX COSTS 15 UNITS ON LINE 0, SO THE LINE-0
+BUDGET IS 209.** And, not previously in this record at all:
+
+> **`{7F01}` and `{7F02}` start the next line at a 16-UNIT HANGING INDENT when the latch is set.**
+
+The prefix is **bit 0 of the box flags word, PER CALL SITE**, live in **22 of 55** states, and it
+is **cleared by `{7F0A}` and `{7F0B}`, so it fires once per BOX** rather than once per line.
+
+> **CORRECTED IN PLACE, 2026-08-26, brief 088. This paragraph used to read "15 units less a 12-unit
+> pull back, so 3 units net on line 0", which disagreed with the model block seventeen lines below
+> by 12 units. THE MODEL BLOCK WAS RIGHT. A reader computing 221 from the old clause gets a number
+> no leg of the code produces.**
+>
+> **The 12-unit pull back is REAL and it does not RUN.** MEASURED: `lhu 120(s0)` / `addiu -12` /
+> `sh 120(s0)` does rewind the horizontal accumulator, clamped on the accumulator itself, so "3
+> net" was mechanically defensible **as a statement about the right-edge shift of a short line**.
+> **It is not a budget.** The `-12` sits behind a guard on `137(s0)`, and **`137(s0)` reads 0 in all
+> 55 live message-box states and in all 22 where the prefix is enabled**, so the branch is taken and
+> **the skip target zeroes the accumulator instead.** Stated as a 55-sample observation, not as a
+> proof of impossibility.
+>
+> **A second reason that holds even if it did run.** The pull back **spends left-edge room to buy
+> right-edge room, and at the cap there is no left-edge room left.** Simulated exactly: **by
+> `s1 = 201` the centering is already under 12, the clamp fires, and the full 15 is paid.**
+>
+> > **The refund exists only in the regime where it is not needed.**
+>
+> **Largest line 0 that does not clip: 209 units, with centering on or off. Both legs, one answer.**
+>
+> **Convention, and it is worth one unit: 209 counts the trailing 1-unit gap as INSIDE the box.**
+> Treated as outside, the same measurement reads 210. Pick one and say which; nothing else changes.
+
+**5. THE HAZARD NO CHARACTER GATE CAN SEE: 21 capitals plus the prefix is 232 units, 104 percent
+of the box. It clips.** A character cap is **simultaneously too tight for lowercase and too loose
+for capitals**, which is why this is a change of unit and not a change of number. Codex rule 35.
+
+**THE 232 SHOWS ITS WORK, so nobody has to take it on trust.** Per-letter fullwidth capital widths
+come from the game's own font 2 table, and the **1-unit gap per glyph is measured in all 43 live
+boxes**: **mean capital 9.35**, so **10.35 with the gap**, and **21 x 10.35 = 217. 217 + 15 = 232**,
+104 percent of 224.
+
+**And a worked sentence rather than a mean, because rule 35's own corollary forbids leaning on
+one.** `THE HERO HAS RETURNED` is **21 characters, 216 units, 231 with the prefix. It clips by 7.**
+Three realistic all-caps lines measured letter by letter rather than averaged: **231, 231, 226.
+All three exceed 209.** **21 of the widest capital is 288.** At the mean, **20 capitals is the last
+length that fits.**
+
+**The hazard is not an artifact of charging 15 rather than 3**, which is the first thing anyone will
+suspect after the correction in point 4. It survives either figure, and it survives the mean being
+replaced by real letters.
+
+#### The model, in general form
+
+```
+line width = sum over glyphs of ( font2_width(glyph) + one gap )
+budget     = 224
+             minus 15 on line 0        when the box has no {7F04}   ->  209
+             minus 16 on lines 1 and 2 when the box has no {7F04}   ->  208
+```
+
+**THIS BLOCK IS THE AUTHORITY AND POINT 4 USED TO CONTRADICT IT.** MEASURED, brief 088: **the
+line-0 budget with the prefix live is 209**, and the 12-unit refund that would have made it 221 is
+behind a guard the message box does not pass. **No leg of the code produces 221.** The correction
+and both independent reasons are in point 4. **A box that carries `{7F04}` draws no prefix and gets
+the full 224.**
+
+**8.01 AND 11.6 ARE MEANS AND A GATE MUST NEVER MULTIPLY THEM.** Sum the real widths, glyph by
+glyph, out of the font 2 table. The means are for reasoning about headroom and for nothing else,
+and they do not compose: 21 characters at the Japanese mean of 11.6 is **243.6 units against a
+224-unit box**, which is an impossible line.
+
+**CORRECTED IN PLACE, 2026-08-26.** This paragraph used to end "so the old 21-character cap and the
+measured mean cannot both be describing the same lines", and left that standing as an unresolved
+arithmetic inconsistency in the record. **It is resolved**, under "The shipped game against the
+model" below: **long shipped lines use narrower glyphs.** 21-glyph lines exist and fit, at **10.6**
+units per glyph rather than 11.6, and the game **never writes a 22-glyph line at all**. **243.6
+never described a real line.** Nothing above is retracted, and 11.6 remains the correct mean over
+the population it was taken on. That is precisely why multiplying it by a length drawn from the top
+of the range is wrong: the mean is not constant along the axis it was multiplied by. A gate that
+multiplies a mean is a character gate wearing units.
+
+#### THE STANDING LIMIT
+
+> **The unit model PREDICTS. It has not been booted.**
+
+**Nothing may be authored longer on the strength of it.** Confirmation is named and cheap: **one
+build with a deliberately 26-character unnamed line 0 on a prefix-live call site.** Until that
+boots, treat the extra headroom as unproven and keep authoring to the old budget.
+
+#### Three limits on the measurement itself
+
+- **224 is measured on 55 blocks that were all the standard dialogue box.** Other window types are
+  not covered by it.
+- **13,553 of 16,434 strings were excluded from the unit census** for carrying a substitution
+  code, leaving 2,881. That is **82.5 percent excluded**, large enough that **the strata comparison
+  must not be leaned on.**
+- **The shipped game did NOT settle the prefix question.** Charging the prefix costs **22 extra
+  violations in 3,581 lines, 0.6 percent**, which is not a falsification either way: **Japanese
+  never runs tight enough against 224 for 15 units to show.** That was reported as a refusal rather
+  than as a result, and the refusal is the part worth keeping.
+
+#### The shipped game against the model, and the one line that exceeds the box
+
+MEASURED 2026-08-26. **This is the first shipped-game evidence the unit model has had.** Over
+**3,969 shipped lines, exactly ONE exceeds 224 units.**
+
+> **`0x048F` string 70, box 0, line 0, unnamed. 229 units. Over by 5.**
+
+**The next widest is 223.** Every glyph in that line was re-read individually out of the game's own
+font 2 table rather than trusted as a sum. **No width is an outlier.** The widths present are 7,
+10, 11 and 12, the crowded middle of a 3-to-13 distribution, and **the three suspicious 13s are
+only 3 glyphs in the whole table, none of them in this line.**
+
+**Three of the four ways this figure could have been manufactured were tested and closed. The
+fourth is open and is stated.**
+
+| escape | verdict |
+| --- | --- |
+| a bad font 2 table entry inflating the sum | **CLOSED**, every glyph re-read individually, no outlier |
+| length, the line is simply longer than any other | **CLOSED**, the overrun is the 20-glyph line, below |
+| a wider window exists somewhere on the disc | **CLOSED**, maximum window width on the disc is **240 px**, eight types |
+| this string draws in some window not yet characterized | **OPEN**, see the caveat below |
+
+**Live geometry: 61 text states across 85 dumps, two window types, both 240 px, inner width 224 in
+every one, margin 16 without exception.**
+
+##### The 21-versus-11.6 puzzle is RESOLVED, and length is not what does it
+
+**Long shipped lines use NARROWER glyphs.**
+
+| glyphs on the line | widest line at that length | units per glyph |
+| ---: | ---: | ---: |
+| 19 | 222 | 11.7 |
+| **20** | **229** | 11.4 |
+| 21 | 223 | **10.6** |
+| 22 | **no such line exists** | |
+
+**The overrun is the 20-glyph line, not the 21.** And **the shipped game never writes a 22-glyph
+line at all, which is what the old character cap was really recording.** The mean of 11.6 was being
+applied to a length at which the text has stopped using mean-width glyphs. This is the resolution
+the corrected paragraph above points at.
+
+##### THE CAVEAT, NAMED RATHER THAN BURIED
+
+> **The measurement did NOT establish which window `0x048F[70]` actually draws in.** The margin of
+> 16 is measured on two window types only. **A 240 px window with a margin under 11 would fit 229.
+> No evidence of such a window exists, but it is not excluded.**
+
+**It is answerable and it is cheap: catch that string on screen or in a dump and read the inner
+width at that moment.** Until that is done, the form to quote is this one:
+
+> **The shipped game VERY LIKELY draws past its own box edge, on one line in 3,969, by 5 units, in
+> the widest box it has.**
+
+**Not "the shipped game clips."** MEASURED: one line at 229 units, a widest box of 240 px giving
+224 inner, a margin of 16 on both window types observed live, and glyph widths verified
+individually. INFERRED: that this particular string draws in a 240 px window at the standard
+margin, and therefore overruns its box by 5 units.
+
+**This also puts a number on the third limit above.** "Japanese never runs tight enough against 224
+for 15 units to show" is now measured rather than asserted, and it is nearly true rather than true:
+**exactly one line in 3,969 runs tight enough, and that one runs 5 units past.**
+
+##### THIS NARROWS THE STANDING LIMIT. IT DOES NOT LIFT IT
+
+> **The unit model PREDICTS and has not been booted.**
+
+Unchanged, and it stays in the record in those words. The confirmation named above, one build with a
+deliberately over-length unnamed line 0 on a prefix-live call site, is still owed and is still the
+only thing that lifts it. **Nothing may be authored longer on the strength of this section.**
+
+##### Three counts in this section, three populations, not reconciled
+
+**3,969** shipped lines measured for width here. **3,581** lines in the prefix-charging comparison
+under "Three limits" above. **2,881** strings surviving the substitution-code exclusion from the
+unit census, out of 16,434. **These are three different questions and the figures must not be
+merged or treated as nested.** Anyone needing one denominator to cover two of them re-measures
+rather than assuming the larger contains the smaller.
 
 ## 15d. Type 46, the MIPS overlays, and the text blocks inside them
 
