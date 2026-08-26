@@ -1675,7 +1675,7 @@ read, and it is used ONCE, for a centering offset.** Nothing stops a long line; 
 outside the frame. **And the shipped game very likely does exactly that, once**, which is under
 "The shipped game against the model" below.
 
-> **AND THE CENTERING LEG IS NOT TAKEN. MEASURED 2026-08-26, brief 088: the message box is NOT
+> **AND THE CENTERING LEG IS NOT TAKEN. MEASURED 2026-08-26, Phase 114: the message box is NOT
 > centered in any of the 55 observed states. Text is LEFT ALIGNED at x = 0.** The centering is
 > gated on `137(s0) == 0` through the same test that gates the 12-unit pull back in point 4, and
 > `137(s0)` reads 0 in all 55. **The sentence above stays because it is true of the CODE**: the box
@@ -1701,7 +1701,7 @@ BUDGET IS 209.** And, not previously in this record at all:
 The prefix is **bit 0 of the box flags word, PER CALL SITE**, live in **22 of 55** states, and it
 is **cleared by `{7F0A}` and `{7F0B}`, so it fires once per BOX** rather than once per line.
 
-> **CORRECTED IN PLACE, 2026-08-26, brief 088. This paragraph used to read "15 units less a 12-unit
+> **CORRECTED IN PLACE, 2026-08-26, Phase 114. This paragraph used to read "15 units less a 12-unit
 > pull back, so 3 units net on line 0", which disagreed with the model block seventeen lines below
 > by 12 units. THE MODEL BLOCK WAS RIGHT. A reader computing 221 from the old clause gets a number
 > no leg of the code produces.**
@@ -1753,7 +1753,7 @@ budget     = 224
              minus 16 on lines 1 and 2 when the box has no {7F04}   ->  208
 ```
 
-**THIS BLOCK IS THE AUTHORITY AND POINT 4 USED TO CONTRADICT IT.** MEASURED, brief 088: **the
+**THIS BLOCK IS THE AUTHORITY AND POINT 4 USED TO CONTRADICT IT.** MEASURED, Phase 114: **the
 line-0 budget with the prefix live is 209**, and the 12-unit refund that would have made it 221 is
 behind a guard the message box does not pass. **No leg of the code produces 221.** The correction
 and both independent reasons are in point 4. **A box that carries `{7F04}` draws no prefix and gets

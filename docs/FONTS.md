@@ -328,10 +328,10 @@ you have shown it is.
 
 > **THE ROUTINE'S NAME IS OPEN AS OF 2026-08-26. THE OWNERSHIP IS NOT.** This
 > passage used to read "so it is BIOS `B(19h)` `InitHeap(0x800B9204, 4060)`".
-> **MEASURED, `ref/psx-spx-docs/kernelbios.md`: `B(19h)` is `HookEntryInt(addr)`
-> (line 392, detail 1147), and `InitHeap` is `A(39h)` (line 235, detail 1770).
-> `InitHeap` appears nowhere in the B table.** MEASURED, the same disassembly in
-> `docs/PHASE62-...`: the recorded second argument `4060` comes from
+> **MEASURED, psx-spx's kernel BIOS documentation: `B(19h)` is
+> `HookEntryInt(addr)`, and `InitHeap` is `A(39h)`. `InitHeap` appears nowhere
+> in the B table.** MEASURED, the same disassembly read in Phase 62: the
+> recorded second argument `4060` comes from
 > `addiu v0,s0,4060`, **which writes `v0`, not `a1`**, leaving `a0` alone, which
 > is the arity `HookEntryInt(addr)` takes.
 >
@@ -341,8 +341,8 @@ you have shown it is.
 > doubt is the name, the arity, and therefore the mechanism by which the region
 > gets written. **Answerable by reading `0x800A5EA0`'s caller and the B-table
 > entry the console dispatches, to its return.** Until then quote it as "owned
-> by a BIOS routine called through table B function `0x19`". Status in
-> `docs/BOARD.md`, flagged OPEN; codex rule 36 carries it as a near-miss.
+> by a BIOS routine called through table B function `0x19`". Raised in Phase
+> 114 and left OPEN; codex rule 36 carries it as a near-miss.
 
 ### The terminator method
 

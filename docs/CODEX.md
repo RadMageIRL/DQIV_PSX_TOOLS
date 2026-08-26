@@ -68,12 +68,12 @@ that OWNS a region, not just the code that writes to it.**
 
 > **THE ROUTINE'S NAME IS OPEN AS OF 2026-08-26 AND THIS RULE DOES NOT DEPEND ON IT.** This
 > paragraph used to name it `InitHeap(0x800B9204, 4060)`. The project's own disassembly puts the
-> call on table **B** at function **`0x19`**, while `ref/psx-spx-docs/kernelbios.md` says `B(19h)`
+> call on table **B** at function **`0x19`**, while psx-spx's kernel BIOS documentation says `B(19h)`
 > is `HookEntryInt` and puts `InitHeap` on the **A** table at `A(39h)`; the recorded second argument
 > came from an `addiu` writing **`v0`**, not `a1`. **The ownership is not in doubt** and was
 > established on hardware, where a build placed two chains in that region and shipped letters
-> disappeared. **Only the name and arity are.** Reasoning and status in `docs/BOARD.md`, flagged
-> OPEN. Rule 36's near-miss is this same discrepancy read as a method failure. The owner here was one `addiu` and a BIOS call, two hundred bytes away from anything the
+> disappeared. **Only the name and arity are.** Raised and left OPEN in Phase 114, on the working
+> record. Rule 36's near-miss is this same discrepancy read as a method failure. The owner here was one `addiu` and a BIOS call, two hundred bytes away from anything the
 address scan reported, and the address scan was not wrong: nothing writes to a heap statically,
 which is exactly why the scan was silent. **The validating case is the one where the content is
 present, and for an arena that means at runtime, not in the image.**
@@ -529,7 +529,7 @@ could not tell apart.
 
 **The discriminator is STRUCTURAL, and this project already had it.** A description is a run of
 segments each TERMINATED by the code, so the string ENDS with it. An existing gate's leg 1 has
-skipped that class for phases using exactly this test, `scratch/p109/ch1/gate.py`:
+skipped that class for phases using exactly this test:
 
 ```python
 if not t or t.endswith("{7F11}"):
@@ -1076,20 +1076,20 @@ A census could not tell a description from a runtime substitution, because one c
 both roles, and it reported **90 defects**. **Eighty-nine were not defects.** The retraction is rule
 23's second instance.
 
-**The test that separates the two roles is one line**, `scratch/p109/ch1/gate.py` line 64:
+**The test that separates the two roles is one line**, in the Chapter 1 gate's leg 1:
 
 ```python
 if not t or t.endswith("{7F11}"):
     continue
 ```
 
-**It is not in one file. MEASURED: 15 files across 6 directories** in the `p108`, `p109` and `p114`
-scratch trees, earliest timestamped 2026-08-25, **14 of them using it as code.** The gate whose leg
-1 depends on it had been passing with it for phases.
+**It is not in one file. MEASURED: 15 files across 6 directories** of working scripts spanning
+Phases 108 to 114, earliest timestamped 2026-08-25, **14 of them using it as code.** The gate whose
+leg 1 depends on it had been passing with it for phases.
 
-**The fifteenth is the Builder's own note**, `scratch/p109/f079/census079.py` line 21, inside the
-docstring of the retracted census itself: **"gate.py's leg 1 skips the class with
-`t.endswith("{7F11}")` and has done for phases. I did not use it."**
+**The fifteenth is the Builder's own note**, inside the docstring of the retracted census itself,
+quoted verbatim: **"gate.py's leg 1 skips the class with `t.endswith("{7F11}")` and has done for
+phases. I did not use it."**
 
 **The same episode re-derived a SECOND thing the project already held.** The corrected 7-cell
 description budget was measured afresh out of the text, 248 shipped segments with the longest at 7,
@@ -1117,7 +1117,8 @@ two_valued = sorted(deltas.items()) == [(0, 3089), (3, 2732)]
 ### The near-miss, and it carries a THIRD remedy neither half covers
 
 **A third instance was proposed, did not survive checking, and the way it failed is worth more than
-the instance would have been.** A standing rule cited `ref/psx-spx-docs/kernelbios.md` line 235 as
+the instance would have been.** A standing rule cited one numbered line of psx-spx's kernel BIOS
+documentation as
 having documented a BIOS routine "the whole time", at a cost of a build and 36 font codes.
 
 **The cost half is real** and has phase-report citations behind it. **The "already documented" half
@@ -1131,12 +1132,12 @@ resolve to the claim.**
 **The conclusion built on it is untouched**, because the region being owned rather than free was
 established on hardware and not from the routine's name. **A broken citation does not cost you the
 conclusion. It costs every future reader who follows the pointer and finds something else**, and
-each of them pays it again. Status and the reasoning are in `docs/BOARD.md`, flagged OPEN.
+each of them pays it again. Raised in Phase 114 and left OPEN.
 
 ### Why this is an entry and not a note
 
 **The nearest thing this file had was not in this file.** The standing instruction to read
-`ref/psx-spx-docs/` before deriving console behavior lives in the team document. **The codex said
+psx-spx before deriving console behavior lives in the team document. **The codex said
 nothing at all about looking before deriving.**
 
 **And what the codex DID say points the other way.** Rule 6 carries "prior documentation is a source
