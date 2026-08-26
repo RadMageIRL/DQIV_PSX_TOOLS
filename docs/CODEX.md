@@ -15,7 +15,7 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Sixteen instances. The most expensive rule here. The sixth cost fifteen phases, the seventh cost twenty-five, and the eighth cost a boot test.**
+**Seventeen instances. The most expensive rule here. Its worst single instances cost twenty-five phases, fifteen phases, and a boot test.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -106,6 +106,28 @@ hand, so it could only ever contain them. **Enumerate a class from what the play
 where the ones you have already found happen to sit**, and treat an index range as a summary of the
 answer rather than a definition of the question.
 
+Corollary, fourth instance, and it is the same rule pointed at the OTHER end of the pipeline:
+**AUTHORED IS NOT DISPLAYED.** A string can exist, be correct, sit at the right index and still
+have nothing that puts it on screen. A title menu was recorded as reading four entries because
+four strings decoded as those four entries. The window draws three. The fourth was authored, was
+spelled correctly, passed every gate and is dead: zero referrers in all four reference populations,
+and the builder the window template names is twenty-nine instructions with no branches and exactly
+three draw calls, read to its `jr ra`. Reading the strings answered a question nobody had asked.
+**Enumerate what a screen shows from the code that draws it, not from the text that could fill it.**
+
+The method that settled it is the reusable part, and it is rule 1 applied before trusting a result
+rather than after: **the instrument was validated on three windows whose entry counts were already
+known, and the three are NOT equal in weight.** One of them, the field menu at six entries, was
+checked against a capture read in that same phase. The other two, a six and a two, agree with entry
+lists already recorded in this project's own notes, and the report says so in as many words:
+agreement with the repo's own measurements, not with a capture read that phase.
+
+**So the validation is one observation and two consistency checks**, and by rule 4 a consistency
+check against your own notes can only report that the notes agree with themselves. It is worth
+having and it is worth less than three captures would have been. Say which is which. The count
+taken cold, against nothing, would have been a guess, and a count described as three observations
+when one of them is an observation is rule 4's failure mode hiding inside rule 1's remedy.
+
 Corollary, and it is the rule pointed at a PROPERTY rather than a search: **a property measured on
 one block is not a rule until it is measured across the population that shares its shape.** A rebuild
 path asserted that a block's dictionary ends on a 4-byte boundary, because the block it was written
@@ -134,6 +156,18 @@ reference with a `lui`/`addiu` pair and the assembled word never exists in the i
 missing references were not hiding in an unsearched region; they were not words. **When an
 exhaustive search returns zero for something that demonstrably happens, stop widening the search and
 question what you are searching FOR.**
+
+Corollary, and it is the rule pointed at an INSTRUMENT rather than a search: **an instrument that
+uses the thing it is measuring as its own identity test cannot report a discrepancy.** Two of these
+in three phases, and they are the same shape as the enumeration corollary above. A figure for
+character advance was obtained by dividing a window's width by an assumed character count, so it
+could only ever reproduce that width and it silently absorbed every error in the assumption; it
+survived three phases and was contradicted the first time a window drew text whose length was known
+independently. An enumerator of live window records identified a record by matching its geometry
+against its template, so a record whose geometry had been overridden at runtime was not recognized
+as a record at all, and the tool reported perfect agreement while sitting on two overrides.
+**Before trusting an instrument, ask what it would report if the thing it measures were different
+from what you expect. If the answer is "nothing", it is not an instrument.**
 
 ## 2. Check a hypothesis against BOTH halves of the symptom before testing it
 
@@ -188,7 +222,10 @@ Corollaries:
 
 ## 5. Every test build must target something reachable, and the report must say where
 
-**Three instances.**
+**Two instances, both below.** This header read "three" over a body that has only ever listed
+two. The third was never written down, so it is not claimed. **An instance count is a pointer
+into this file, not a score**, and one that points at nothing is the same defect as a rule that
+cites a document not containing it.
 
 Reachable from a fresh start in under two minutes, fired unconditionally, and the report says in
 plain language where in the game it appears and how to get there.
@@ -224,7 +261,7 @@ If a model has two terms that happen to cancel in the case you fitted it to, it 
 there and fail everywhere else.
 
 An expansion model was calibrated on one small block where the growth of one region and the saving
-in another nearly cancelled. On a block nine times larger the saving grew fourfold and the growth
+in another nearly canceled. On a block nine times larger the saving grew fourfold and the growth
 elevenfold. The model under-predicted by a factor of five, and it was missing a third term entirely.
 
 **Fit on at least two cases that differ in the dimension you expect to matter.**
@@ -342,7 +379,7 @@ Corollary, a CLOSED ROUTE: **do not retune a phrase dictionary to fit a translat
 against a block with no room, in several scorings. Scoring phrases by symbols removed ignores that
 each costs two bytes of index plus two per symbol of payload, accepts anything used twice, and fills
 the payload to its cap: over by 1,788. Making the score cost-aware improved it to over by 1,184 and
-still lost, because occurrences are counted before substitution and long phrases cannibalise the
+still lost, because occurrences are counted before substitution and long phrases cannibalize the
 short ones inside them. **The shipped table beat every alternative generated.** Emptying the table
 entirely was worth +40 bytes and was the only dictionary move that helped at all.
 
@@ -366,7 +403,7 @@ in a second, and it is the only thing standing between a stale experiment and a 
 
 Corollary: **a substitution is only invisible if the replacement draws the same pixels.** Check the
 glyph, not the code. The two replacement codes here had their own font entries at 3 units wide
-against 11 for the characters they displaced, which is the whole difference between a relabelling and
+against 11 for the characters they displaced, which is the whole difference between a relabeling and
 a defect.
 
 ## 21. **[PSX]** A rebuilt Huffman tree differs in SHAPE and not in QUALITY
@@ -387,6 +424,98 @@ still tests every other stage.
 Not a reset, not a disc swap, not opening a file in a running window. **Starting a new game reloads
 save data, not the executable.** Asking whether a save state was used got a truthful "no" that was
 not the question, and the wrong question was treated as dispositive for two builds.
+
+## 23. Counting a set is not identifying it
+
+**First of four rules that are one family, and the family is worth more than any of the four
+separately: a measurement that is TRUE and a conclusion that is NOT. The others are 24, 25 and
+26.** Every one of them began with bytes read correctly and ended in a claim those bytes did
+not support, which is why no check aimed at the measurement could have caught any of them. The
+question that separates the family is not "did I read this right" but **"what else would
+produce exactly this reading".**
+
+A count describes the SIZE of a set. It says nothing about what the members are, and a set
+whose members are all one repeated thing counts exactly like a set of distinct things.
+
+Phase 96 found 819 words in a battle overlay that were valid references to a text block **by
+value**, and reported an 819-reference regression on that basis, overruling a tool that
+disagreed. Phase 97 read the values instead of counting them: all 819 are the single word
+`0x48C0AA4F`, in consecutive runs, and its MIPS opcode field is 0x12, COP2. They are filler.
+The tool had been right the whole time.
+
+Cost: a regression reported on a count, a working tool overruled on the strength of it, and a
+retraction the next phase had to open with. **A `Counter` over the values, one line, would have
+ended it before the regression was written down. Print the distinct values of a set before
+reporting its size.**
+
+## 24. A gate that races what it checks is worse than no gate
+
+Second of the family in 23. The bytes were read correctly; they were not the artifact.
+
+Phase 95's first verification run started 20 seconds after `FIGHT.bin` appeared on disk, while
+the second `discbuild.inject` was still writing 368 MB into that same file. It read a partially
+written disc and **exited 0**. Nothing it passed was ever the build.
+
+This is worse than having no gate at all, and the asymmetry is the point. With no gate the
+build is known to be unverified and gets treated accordingly. With a racing gate the build
+carries a pass, and the next thing spent on it is a boot test, which is the most expensive
+attention in the project.
+
+Three fixes, all cheap: **wait on the PROCESS, not on the file appearing**; **hash the artifact
+before and after the read and fail if it moved**; **refuse to run at all while the builder's
+temporary file exists.**
+
+## 25. A value that fits the hypothesis is not evidence it was used
+
+Third of the family in 23. Registers hold whatever was last put in them, and a stale one is
+still a real value that a dump reports accurately.
+
+Phase 99 nearly reported `a2 = 0x800B07C2` as the smoking gun for the battle message box. It
+has every property the hypothesis wanted: it lands inside `0x048C`, and its region differs
+between discs. The format string at that call site is `"%s"`, which consumes `a1`, and `a1`
+there held `0x80022F3C`, a two-byte string in the executable. `a2` was a leftover from an
+earlier call and was never read.
+
+**Before a value that fits counts as evidence, show the code CONSUMED it**: read the format
+string, the arity, or the instruction that actually uses the register. A fit is a reason to go
+and check, never a result.
+
+## 26. A string read wrong looks exactly like a string resolved wrong
+
+Fourth of the family in 23. Before hunting the machinery that put a string on screen, check that
+the string says what you think it says.
+
+`Foresee` was carried as a reference that resolved to the wrong index, and the shop that drew it
+was carried as **"the reproducible instance of the same fault"** as a corruption elsewhere on the
+screen. That is the framing, in its own words, that Phase 105 overturns. Phase 105 put the pristine Japanese disc alongside ours and found the shipped game
+drawing `うれない` in the same cell: `0x048C[652]`, the very string that renders as `Foresee` on
+ours. **There was no reference fault, no offset error and no wrong branch.** `うれない` is
+売れない, "cannot be sold", and it had been read as うらない, 占い, divination. The shop was
+never faulty.
+
+**The discriminator was already in hand and cost one query.** `[652]` has 228 reference sites
+against 5 to 10 for each of its neighbors. 228 is a per-item marker evaluated once per shop
+row; a fortune-telling verb is one menu entry. **A reference count is a cheap type test for
+what a string IS**, and it disagreed with the translation before any of the hunting started.
+
+## 27. Verify every doc edit by reading the file back
+
+**Cost: several false "handoff updated" claims, and one destroyed working document.**
+
+Same shape as 24. A script that prints its success line has proved that it reached its success
+line, which is a true measurement, and "the file changed" is a conclusion it does not support.
+
+- **A `replace` that matches nothing prints exactly the same success line as one that works.**
+  Phase 107 checked several earlier updates to a working document and found the text had never
+  been written; the script had reported success every time and nobody read the file back.
+- **A `replace` on an EMPTY slice inserts the replacement between every character of the
+  file.** That is what destroyed the document, and it was recovered only by stripping the
+  insertion back out, which worked only because the insertion was uniform.
+
+So: never `replace` on an empty slice, check the line count before and after every edit, and
+**`grep` the text back out of the file on disk**. The write is not done until it has been read
+back. This applies to documents exactly as rule 4 applies to builds: the record is an artifact,
+and an unverified edit to it is an unverified build.
 
 ---
 
@@ -426,7 +555,7 @@ with 2,748 bytes to spare. The comparison changed. The measurement did not get b
 
 **Which channel, not which bytes.** Nine phases asked why a change did not render. Every hypothesis
 was about bytes rendering: the upload extent, the atlas, the table, the sector form, the boot
-sectors. None asked **which channel the change travelled on** until the frame was changed to
+sectors. None asked **which channel the change traveled on** until the frame was changed to
 streamed-at-scene-time against loaded-at-boot. That one sentence covered every observation the nine
 phases had produced.
 
@@ -472,23 +601,22 @@ having only while every entry has a measured before and after.
 
 ---
 
-Corollary, and it is the rule pointed at an INSTRUMENT rather than a search:
-**an instrument that uses the thing it is measuring as its own identity test
-cannot report a discrepancy.** Two of these in three phases, and they are the
-same shape as the enumeration corollary above. A figure for character advance
-was obtained by dividing a window's width by an assumed character count, so it
-could only ever reproduce that width and it silently absorbed every error in
-the assumption; it survived three phases and was contradicted the first time a
-window drew text whose length was known independently. An enumerator of live
-window records identified a record by matching its geometry against its
-template, so a record whose geometry had been overridden at runtime was not
-recognized as a record at all, and the tool reported perfect agreement while
-sitting on two overrides. **Before trusting an instrument, ask what it would
-report if the thing it measures were different from what you expect. If the
-answer is "nothing", it is not an instrument.**
+**27 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
+taken by counting the instances written under each entry: rule 1 has seventeen, rule 4 has four,
+rule 5 has two, rule 9 has two. Everything else has one. **Rules 23 through 26 are one family**,
+a measurement that is true and a conclusion that is not, and 27 is the same shape aimed at a
+document.
 
-**18 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts: rule 1 has thirteen, rule 3 has four, rule 4 has three, rule 8 has
-two. Everything else has one.
+**Rule 1's seventeenth instance used to sit below this section**, stranded after "Maintenance"
+and outside the rule it belongs to, where a heading-based count could not see it and returned
+sixteen. It has been moved back inside rule 1. A count that disagrees with a header is a
+question about where the text lives before it is a question about the header.
+
+The previous version of this line read "18 cost-entered rules" and attributed the instance
+counts to rules 3, 4 and 8. Both were stale: the rules had been renumbered and the footer had
+not, and the count was **four short** of the 22 entries that stood before this section was
+added. An earlier draft of this paragraph said five, which is the defect it is describing
+wearing the correction's clothes. **Count the headings, do not subtract from memory.**
 
 Linked from `FORMAT.md` and from the working notes. **One authoritative location per fact**: nothing
 here is duplicated into those files, and format claims are not duplicated into this one.
