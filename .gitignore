@@ -16,6 +16,25 @@ SYSTEM.CNF
 corpus/
 dumps/
 
+# Working material from the translation side, which is a SEPARATE and PRIVATE
+# repository. None of it may ever land here. Listed by the shapes that workflow
+# actually produces rather than by category, because a category is easy to argue
+# with at the moment of a `git add .`:
+#   pickled reference populations and site tables
+#   side-by-side and extract listings, which are decoded script
+#   authored English, glossaries, voice sheets, editorial notes
+#   emulator save states and RAM captures
+*.pkl
+*.pickle
+*.sav
+*.srm
+*.state
+scratch/
+editorial/
+*-side-by-side.*
+*-extract.*
+MANIFEST.sha256
+
 # Python
 __pycache__/
 *.py[cod]
