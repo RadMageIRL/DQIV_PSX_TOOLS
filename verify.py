@@ -23,10 +23,33 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# THIS SUITE MUST NOT DIE OF ITS OWN OUTPUT, and it has.
+#
+# Gate 7 prints a Japanese string as its expected value. When stdout is a pipe or
+# a file rather than a console, Python picks the locale encoding, which on a
+# Windows box is cp1252, and the print raises UnicodeEncodeError. The suite died
+# there after six gates with a return code of 1.
+#
+# That alone is an annoyance. What made it expensive is that a driver capturing
+# the output parsed the rows already printed and reported "5 gates, 5 pass, 0
+# FAIL": A TRUNCATED SUITE WEARING THE SHAPE OF A CLEAN ONE. The full suite is 38
+# gates. The companion disc, which exists to fail and so prove the suite can
+# fail, also reported zero failures, because it too had crashed long before
+# reaching the gate that would have caught it.
+#
+# Fixed here rather than in the caller. A tool whose correctness depends on the
+# caller setting PYTHONIOENCODING has moved its own defect one level up.
+# `backslashreplace` is deliberate: it can mangle a character but it can never
+# raise, and a suite that cannot be killed by a print is worth a little mojibake
+# on a console that could not have rendered the character anyway.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs, fonts
 from dq4 import corpus as corpusmod
-from dq4 import mips, referrers, overlay
+from dq4 import mips, referrers, overlay, splitimm
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -530,6 +553,77 @@ def main():
                  len(refs) == 213 and hit == len(refs) and off1 == 0,
                  "%d refs, %d on a string start, %d at +1 bit" % (len(refs), hit, off1),
                  "213 refs, all on a string start, 0 at +1 bit")
+
+        # 45  THE SPLIT-IMMEDIATE RECOGNIZER, scored before anything believes it.
+        #
+        # Gates 29 and 30 cover references STORED as a word. This covers the ones
+        # the code CONSTRUCTS, which no search for a literal can find, and which
+        # a rewriter that cannot see them silently declines to fix. That is not a
+        # hypothetical: an undercounting recognizer is an undercount someone may
+        # notice, but a REWRITER with the same blind spot leaves the reference
+        # stale and the build is green, because the gate was handed the same list
+        # the rewriter used. This gate breaks that loop by scoring the recognizer
+        # against sites confirmed by disassembly rather than by the rewriter.
+        #
+        # Three parts, and the second is the one that matters most:
+        #
+        #   POSITIVE  the three lui/ori pairs that build 0x048C09A31 in a1.
+        #   READ-WRITE AGREEMENT  rewrite those halves to a different valid
+        #             string start and rescan. The recognizer must recover the
+        #             SAME three offsets carrying the NEW value. A reader and a
+        #             writer that disagree is exactly how a build ships half
+        #             translated, and nothing else here would catch it.
+        #   NEGATIVE  ids that name no executable block must score zero.
+        #
+        # WHAT IS DELIBERATELY NOT USED AS A CONTROL, because it was measured and
+        # it does not discriminate. The +/-1 bit shift that makes gate 29 sharp
+        # is useless here: string offset 0 is a real start, so shifting the set
+        # by one admits the immediate 1, and `lui rX,0x048C` then `ori rX,rX,1`
+        # is an ordinary code shape. It scores 32 against the real 3. A shuffled
+        # starts set of the same size scores 0, 10, 15, 15 and 0 over five seeds,
+        # which is not a control either. A DISCRIMINATOR THAT WORKS FOR ONE
+        # INSTRUMENT DOES NOT TRANSFER TO ANOTHER JUST BECAUSE THE POPULATION IS
+        # THE SAME, and both figures are recorded here so nobody re-derives them.
+        #
+        # SCOPE, stated because a scoped sweep must report a scoped number: the
+        # executable only. The archive carries far more of these, in overlay
+        # images, and sweeping it costs minutes.
+        si_text = exe[toff:toff + tsize]
+        si_starts = huffman.string_offsets(
+            [b for _v, b in referrers.exe_blocks(exe, load, toff, tsize)
+             if b.id == 0x048C][0])
+        si_sites = splitimm.find_word_refs(si_text, 0x048C, si_starts, base=load)
+        si_pairs = [(s.hi_off, s.lo_off) for s in si_sites]
+        si_vals = sorted(set(s.value for s in si_sites))
+        # READ-WRITE AGREEMENT. Rewrite both halves at every site to a different
+        # valid reference and rescan. Both halves always, never the low one
+        # alone: a low-half-only patch is correct until the value crosses a
+        # 0x10000 boundary and then silently is not.
+        si_new = (0x048C << 20) | sorted(si_starts)[5]
+        si_buf = bytearray(si_text)
+        for s in si_sites:
+            hi, lo = splitimm.halves(si_new, s.lo_op)
+            for _o, _imm in ((s.hi_off - load, hi), (s.lo_off - load, lo)):
+                _w = struct.unpack_from("<I", si_buf, _o)[0]
+                struct.pack_into("<I", si_buf, _o, (_w & 0xFFFF0000) | _imm)
+        si_again = splitimm.find_word_refs(bytes(si_buf), 0x048C, si_starts,
+                                           base=load)
+        si_rt = ([(s.hi_off, s.lo_off) for s in si_again] == si_pairs
+                 and sorted(set(s.value for s in si_again)) == [si_new])
+        si_ctrl = {t: len(splitimm.find_word_refs(si_text, t, si_starts,
+                                                 base=load))
+                   for t in (0x0001, 0x0123, 0x0999, 0x0FFF)}
+        rep.gate(45, "split-immediate recognizer  (COMPANION)",
+                 si_pairs == [(0x8002C070, 0x8002C078), (0x8002C168, 0x8002C170),
+                              (0x8008D4AC, 0x8008D4B4)]
+                 and si_vals == [0x048C09A31] and si_rt
+                 and not any(si_ctrl.values()),
+                 "%d sites, value(s) %s, rewrite round trip %s, controls %s"
+                 % (len(si_sites), ", ".join("0x%08X" % v for v in si_vals),
+                    "OK" if si_rt else "FAILED",
+                    ", ".join("%04X:%d" % kv for kv in sorted(si_ctrl.items()))),
+                 "3 sites building 0x048C09A31, rewrite round trip OK, "
+                 "0 for every control id")
         # 42  MENU TEXT RESOLVES IN FONT 1, which is a different table from the
         # one gate 38 checks. MEASURED, Phase 59: the message box draws from
         # FONT2 and the menus draw from FONT1. The tables are not the same set,

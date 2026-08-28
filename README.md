@@ -67,7 +67,10 @@ dq4/
   glyph.py        glyph atlas rendering
   fonts.py        the two font tables, reconstructed from the executable
   codes.py        control code table and census
+  referrers.py    references STORED as a word
+  splitimm.py     references the code CONSTRUCTS, which no word scan can see
 verify.py         the gate suite
+tests/            unit tests that need no disc image
 FORMAT.md         the format reference
 ```
 
@@ -80,12 +83,22 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Thirty nine gates cover source and output integrity, the block scan, the sub-block
+Forty four gates cover source and output integrity, the block scan, the sub-block
 census, sub-block alignment, the text header invariants, a known-good decode, a
 byte-exact round trip, the dictionary, the sector table, the control code census, the
 atlas geometry and its font table, LZS decompression, the STR video band, a MIPS
-disassembler round trip, the four referrer systems, the bit budget, per-string
-editability and the corpus roll-up hash.
+disassembler round trip, the four referrer systems, the split-immediate recognizer,
+the bit budget, per-string editability, carrier coverage and the corpus roll-up hash.
+
+Three of them need an argument to run. Gates 22, 33 and 34 need `--corpus-out <dir>`.
+Gate 44, carrier coverage, needs `--edited-ids 047C,048F,...`, the ids a build edited,
+and renders as a note without them: **a build that does not declare what it edited
+cannot be checked for having missed a copy.** It exists because a disc passed 35 gates
+and shipped with one id English in 65 of its 69 carriers, the other four being a
+carrier type nothing had thought to look in.
+
+The count above was taken by counting the distinct gate numbers in `verify.py`, not by
+adding to the previous figure. The numbers run 1 to 45 with no gate 38.
 
 Gate 1 asks whether the image is the pinned source disc. On a disc this library built
 the answer is legitimately no, so it prints as a note rather than a verdict and gate 1b
@@ -103,6 +116,45 @@ statistic the shipped game exhibits: bits per symbol, the LZS overrun distributi
 20-kana companion, and a whole-archive alignment census. **A gate written from a model
 tests the model.** If you reuse this library, add gates of the second kind first.
 FORMAT.md section 16 is the short version and it is the most transferable thing here.
+
+## Running the unit tests
+
+```
+python -m unittest discover -s tests -t .
+```
+
+No disc image needed, and that is the point rather than a convenience. The gates measure
+the library against a real disc, which means they can only exercise the forms the shipped
+game happens to contain. **A recognizer's blind spot is by definition a form the data you
+have does not make you notice**, so the tests for one are built from fabricated
+instruction words: sign-extension boundaries, register clobbers across a jump, and pairs
+placed at exactly the window limit and one instruction beyond it.
+
+Every negative control in there is paired with a planted positive. A test asserting that
+a scanner returns zero on unrelated bytes passes just as well when the scanner is broken
+and returns zero on everything, so each one is followed by the same assertions against an
+input with one site planted. **A control that has never been seen to fail is not a
+control.**
+
+## Reading references the code CONSTRUCTS
+
+`referrers.py` finds references stored as the packed word `(text id << 20) | bit offset`.
+`splitimm.py` finds the ones that never exist as that word at all, because the code builds
+them in a register: `lui` plus `ori`, `lui` plus `addiu`, and an `ori` whose high half was
+loaded from memory. **A search for a literal cannot find a value that is computed.**
+
+This is not a completeness nicety. An enumerator blind to a form reports a low number
+someone may query. **A rewriter blind to the same form silently declines to fix those
+sites and the build comes out green**, because the gate was handed the same list the
+rewriter used. Gate 45 scores the recognizer against sites confirmed by disassembly and
+then rewrites them and rescans, so a reader and a writer that disagree cannot both pass.
+
+Two things worth carrying elsewhere. **`addiu` sign-extends its immediate**, so composing
+or writing an `addiu` pair with the `ori` rule is wrong by 0x10000 whenever bit 15 of the
+low half is set: this is a correctness bug, not a coverage gap, and it is invisible for as
+long as every low half you meet is under 0x8000. And **a wide pairing window without a
+register-clobber model is worse than a narrow one**, because widening only buys more
+chances to pair across a write. Both were widened together here.
 
 ## The corpus and its roll-up hash
 
