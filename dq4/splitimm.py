@@ -38,6 +38,26 @@ blind spots is not an instrument:
     this recognizes at all.
   * A `lui` whose register is written by an instruction this module's `writes()`
     model does not cover would be paired across that write.
+  * A HIGH HALF IN A BRANCH DELAY SLOT, with the low half AT THE BRANCH TARGET,
+    is not paired. MEASURED 2026-08-28 on an overlay image: three such sites on
+    one block that the forms above find 26 on. A MIPS delay slot executes
+    whether or not its branch is taken, so a `lui` written there is LIVE on the
+    taken path, where the completing low half sits at the destination, and DEAD
+    on the fall-through, where the next instruction overwrites the register. The
+    linear scan below sees only the fall-through and is CORRECT to call that
+    `lui` clobbered. This is not a defect in the clobber model; it is a
+    control-flow form the model does not represent, and pairing it needs a
+    branch-target pass this module does not have. The low half is then seen
+    alone: when its register was last LOADED it surfaces as an ORPHAN, and
+    otherwise it is not reported at all.
+
+BECAUSE OF THAT LAST ONE, `hi_off is None` IS NOT A CURIOSITY A CALLER MAY SKIP.
+It means "no high half is locatable at this site", which is the whole of what the
+image supports, and it is the shape a reference nobody models arrives in. A
+caller that drops those sites under-reports exactly the ones worth reading, and a
+caller that does arithmetic on `hi_off` without checking raises TypeError on the
+first image that has one. `rewrite()` below is built to make neither mistake
+quietly.
 
 ABSENCE IS EVIDENCE, NOT PROOF. A zero from this scanner means "no site of these
 forms within this window", not "no reference exists". Score it with
@@ -141,7 +161,12 @@ class Site(object):
     """One constructed reference.
 
     form      SPLIT or ORPHAN
-    hi_off    byte offset of the `lui`, or None for an ORPHAN
+    hi_off    byte offset of the `lui`, or None when no high half was located.
+              Today only an ORPHAN reports None, but the fact a caller may rely
+              on is the weaker one: None means the image does not tell us where
+              the high half is, so nothing may be composed, written or measured
+              at a high half here. See the delay-slot form in the module
+              docstring for a site that is a real reference and still has None.
     lo_off    byte offset of the low half
     lo_op     ORI or ADDIU
     reg       the register the value is built in
@@ -249,6 +274,51 @@ def find_word_refs(buf, tid, starts, window=WINDOW, base=0):
         return imm in starts
 
     return find(buf, accept, accept_low, window, base)
+
+
+def rewrite(buf, sites, value, base=0):
+    """Store `value` at every site in `sites`. Returns (bytes, whole, low_only).
+
+    `whole` lists the sites that took ALL of `value`, high half and low half.
+    `low_only` lists the sites with `hi_off is None`, where only `value & 0xFFFF`
+    was written because the image does not say where the other half is.
+
+    `base` is the value that was added to the offsets in `sites`, and is
+    subtracted again here. It is the same `base` that was passed to `find()`.
+
+    THE RETURN SHAPE IS THE POINT, and it is the shape because of a real defect.
+    Gate 45 of verify.py open-coded this loop and read `s.hi_off - base` with no
+    check. On an image whose only sites had high halves it ran and passed; on the
+    first image carrying a lone low half it raised TypeError midway through the
+    suite, and the same code therefore had two different verdicts depending on
+    what the image contained. The two available repairs were both worse than this
+    one: raising on a lone low half moves the crash without removing it, and
+    skipping it silently makes the count fall by one with nothing said, which is
+    the failure this whole module exists to avoid.
+
+    So a lone low half is neither refused nor hidden. It is written as far as it
+    can be and RETURNED IN ITS OWN LIST, and the caller must decide what a
+    partial write means. It does not mean a build may patch one: the composed
+    value at such a site depends on a high half somewhere this module cannot see,
+    so a 16-bit write there is defensible only against a value that is already a
+    complete answer on its own, such as a bare string offset. Passing a full
+    packed reference and taking its low half is how a rewriter silently produces
+    a reference 0x10000 wrong, which is the same trap `halves()` documents.
+    """
+    out = bytearray(buf)
+    whole, low_only = [], []
+    for s in sites:
+        hi, lo = halves(value, s.lo_op)
+        pairs = [(s.lo_off - base, lo)]
+        if s.hi_off is None:
+            low_only.append(s)
+        else:
+            pairs.append((s.hi_off - base, hi))
+            whole.append(s)
+        for off, imm in pairs:
+            w = struct.unpack_from("<I", out, off)[0]
+            struct.pack_into("<I", out, off, (w & 0xFFFF0000) | imm)
+    return bytes(out), whole, low_only
 
 
 def positive_control(buf, tid, starts, known, window=WINDOW, base=0):

@@ -67,6 +67,12 @@ def image(words):
     return struct.pack("<%dI" % len(words), *[w & 0xFFFFFFFF for w in words])
 
 
+def imm_at(buf, off):
+    """The 16-bit immediate stored in the word at byte offset `off`."""
+    import struct
+    return struct.unpack_from("<I", buf, off)[0] & 0xFFFF
+
+
 # A value that is a plausible packed reference: id 0x048C, bit offset 0xA88F.
 TID = 0x048C
 OFFSET = 0xA88F
@@ -345,6 +351,150 @@ class TestOrphanForm(unittest.TestCase):
         # and the control can fail
         self.assertEqual(
             len(splitimm.find(buf, lambda v: True, lambda i: i in STARTS)), 1)
+
+
+# --------------------------------------------------------- rewriting a site
+
+class TestRewrite(unittest.TestCase):
+    """rewrite(), and the crash it exists to make impossible.
+
+    THIS IS A REGRESSION SUITE FOR A SHIPPED DEFECT. Gate 45 of verify.py at
+    c850644 open-coded this rewrite and computed `s.hi_off - base` for every
+    site. A site with `hi_off is None` is a low half with no locatable high half:
+    the ORPHAN form produces one, and so does the delay-slot form named in the
+    module docstring. On an image with no such site the gate ran and reported a
+    verdict; on an image with one it raised TypeError partway through the suite.
+
+    The image that crashed it is not what these tests are built from, and that is
+    the point. Fabricated words hold the shape still: the defect is reachable
+    from an instruction sequence of two words, and needing a 350 MB disc to see
+    it is exactly how it survived to be pushed.
+    """
+
+    # A second valid start, so a rewrite can move a site to a different real
+    # reference rather than to a number that merely differs.
+    OTHER = 0x1234
+    NEW = (TID << 20) | OTHER
+
+    def _mixed(self):
+        """One paired site and one lone low half in the same image."""
+        hi, lo = splitimm.halves(VALUE, ORI)
+        return [lui(16, hi), ori(16, 16, lo), lw(17, 4), ori(17, 17, OFFSET)]
+
+    def test_a_lone_low_half_does_not_raise(self):
+        # THE CRASH, in two words. Before the fix this raised
+        # TypeError: unsupported operand type(s) for -: 'NoneType' and 'int'.
+        words = [lw(16, 4), ori(16, 16, OFFSET)]
+        sites = scan(words)
+        self.assertEqual([s.hi_off for s in sites], [None])
+        buf, whole, low_only = splitimm.rewrite(image(words), sites, self.OTHER)
+        self.assertEqual(whole, [])
+        self.assertEqual(low_only, sites)
+        self.assertEqual(len(buf), len(image(words)))
+
+    def test_a_lone_low_half_is_binned_and_never_dropped(self):
+        # Every site handed in comes back in exactly one of the two lists. A
+        # rewriter that silently skipped the lone one would satisfy "no crash"
+        # and still lose the site, which is the worse failure of the two: the
+        # crash at least announces itself.
+        sites = scan(self._mixed())
+        self.assertEqual([s.form for s in sites], [SPLIT, ORPHAN])
+        _b, whole, low_only = splitimm.rewrite(image(self._mixed()), sites,
+                                               self.NEW)
+        self.assertEqual(len(whole) + len(low_only), len(sites))
+        self.assertEqual(whole, [sites[0]])
+        self.assertEqual(low_only, [sites[1]])
+
+    def test_a_paired_site_takes_both_halves_and_rescans_to_the_new_value(self):
+        # The positive control for the two tests above. Assertions that a lone
+        # site is handled prove nothing unless the same harness is seen to move a
+        # real pair.
+        words = self._mixed()
+        sites = [s for s in scan(words) if s.hi_off is not None]
+        buf, whole, low_only = splitimm.rewrite(image(words), sites, self.NEW)
+        self.assertEqual((len(whole), len(low_only)), (1, 0))
+        again = [s for s in splitimm.find_word_refs(buf, TID, STARTS)
+                 if s.hi_off is not None]
+        self.assertEqual([(s.hi_off, s.lo_off) for s in again],
+                         [(s.hi_off, s.lo_off) for s in sites])
+        self.assertEqual([s.value for s in again], [self.NEW])
+
+    def test_a_lone_site_gets_its_low_half_and_nothing_else(self):
+        # What is written is the 16 bits that are there. The word before it is
+        # the load that made this an ORPHAN and it must be untouched: a rewriter
+        # that "repaired" a missing high half by inventing one would compose a
+        # value the machine never builds.
+        words = [lw(16, 4), ori(16, 16, OFFSET)]
+        before = image(words)
+        buf, _w, low_only = splitimm.rewrite(before, scan(words), self.OTHER)
+        self.assertEqual(len(low_only), 1)
+        self.assertEqual(buf[0:4], before[0:4])
+        again = splitimm.find_word_refs(buf, TID, STARTS)
+        self.assertEqual([(s.form, s.hi_off, s.lo_off, s.value) for s in again],
+                         [(ORPHAN, None, 4, self.OTHER)])
+
+    def test_base_is_subtracted_from_both_kinds_of_offset(self):
+        # find() is normally called with base=load, so the offsets in a Site are
+        # virtual addresses and cannot index the buffer. Getting this wrong on
+        # the lone bin alone would produce a rewriter that is correct on every
+        # image that has none.
+        base = 0x80000000
+        words = self._mixed()
+        sites = splitimm.find_word_refs(image(words), TID, STARTS, base=base)
+        self.assertEqual([s.lo_off for s in sites], [base + 4, base + 12])
+        buf, whole, low_only = splitimm.rewrite(image(words), sites, self.NEW,
+                                                base=base)
+        self.assertEqual((len(whole), len(low_only)), (1, 1))
+        again = splitimm.find_word_refs(buf, TID, STARTS, base=base)
+        self.assertEqual([s.value for s in again],
+                         [self.NEW, self.NEW & 0xFFFF])
+
+    def test_an_addiu_pair_is_rewritten_by_its_own_rule(self):
+        # rewrite() must ask halves() per site rather than once per call. A value
+        # with bit 15 set stores a different high half in an addiu pair than in
+        # an ori pair, and a rewriter that picks one rule for a whole image is
+        # wrong by 0x10000 at every site of the other kind.
+        #
+        # THE TARGET VALUE IS THE TEST. Rewriting to self.NEW would pass under
+        # either rule, because 0x1234 has bit 15 clear and the two rules agree
+        # there. MEASURED against a deliberately broken rewriter that asked
+        # halves() once with the ori rule: rewriting to self.NEW did not catch
+        # it, rewriting to VALUE did. An example that cannot separate the two
+        # implementations is not a test of which one is running.
+        hi, lo = splitimm.halves(self.NEW, ADDIU)
+        words = [lui(16, hi), addiu(16, 16, lo)]
+        sites = scan(words)
+        self.assertEqual([s.value for s in sites], [self.NEW])
+        buf, whole, _l = splitimm.rewrite(image(words), sites, VALUE)
+        self.assertEqual(len(whole), 1)
+        again = splitimm.find_word_refs(buf, TID, STARTS)
+        self.assertEqual([s.value for s in again], [VALUE])
+
+    def test_an_ori_pair_and_an_addiu_pair_in_one_image_take_different_bytes(self):
+        # And the two rules must be applied SITE BY SITE within one call. Both
+        # pairs below must end up composing to the SAME value out of DIFFERENT
+        # stored high halves: 0x48C0 for the ori and 0x48C1 for the addiu, whose
+        # low half 0xA88F sign-extends negative and so borrows one.
+        ohi, olo = splitimm.halves(self.NEW, ORI)
+        ahi, alo = splitimm.halves(self.NEW, ADDIU)
+        words = [lui(16, ohi), ori(16, 16, olo), NOP,
+                 lui(17, ahi), addiu(17, 17, alo)]
+        sites = scan(words)
+        self.assertEqual([s.lo_op for s in sites], [ORI, ADDIU])
+        buf, whole, _l = splitimm.rewrite(image(words), sites, VALUE)
+        self.assertEqual(len(whole), 2)
+        stored = [imm_at(buf, s.hi_off) for s in sites]
+        self.assertEqual(stored, [0x48C0, 0x48C1])
+        again = splitimm.find_word_refs(buf, TID, STARTS)
+        self.assertEqual([s.value for s in again], [VALUE, VALUE])
+
+    def test_no_sites_is_a_no_op_and_not_an_error(self):
+        # The other empty case. An empty site list must leave the image alone AND
+        # report two empty bins, so a caller can tell "nothing to do" from
+        # "everything done".
+        before = image(self._mixed())
+        buf, whole, low_only = splitimm.rewrite(before, [], self.NEW)
+        self.assertEqual((buf, whole, low_only), (before, [], []))
 
 
 # ------------------------------------------------------- controls and scoring
