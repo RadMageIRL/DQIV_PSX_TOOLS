@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs, fonts
 from dq4 import corpus as corpusmod
-from dq4 import mips, referrers
+from dq4 import mips, referrers, overlay
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -42,6 +42,39 @@ PHASE0_CENSUS = {
 }
 
 STRING_10 = "どうした？　<7F1F>。<7F02>もう　降参かい？"
+
+
+def _carriers_of(arch, exe, tid):
+    """Every carrier holding text block `tid`, in BOTH media, as (where, bytes).
+
+    Written for gate 44. The point is coverage, not speed: it walks every
+    sub-block of every type rather than the four types a census happened to
+    enumerate, because the defect this gate exists to catch is precisely a
+    carrier nobody thought to look in.
+    """
+    out = []
+    if exe:
+        load, _pc, tsize, toff = mips.exe_mapping(exe)
+        for _va, tb in referrers.exe_blocks(exe, load, toff, tsize):
+            if tb.id == tid:
+                out.append(("exe:%04X" % tb.id, tb.raw[:tb.a]))
+    blocks = hbd.scan_blocks(arch)
+    for sec, sb in hbd.sub_blocks(blocks):
+        raw = hbd.sub_bytes(arch, sb)
+        if sb["flags"] == hbd.FLAG_LZS:
+            try:
+                raw = lzs.decompress(raw)
+            except Exception:
+                continue
+        try:
+            found = overlay.scan_image(raw)
+        except Exception:
+            continue
+        for off, tb in found:
+            if tb.id == tid:
+                out.append(("%d/%d t%d+%06X" % (sec, sb["idx"], sb["type"], off),
+                            raw[off:off + tb.a]))
+    return out
 
 
 class Report:
@@ -78,6 +111,13 @@ def main():
     ap.add_argument("--corpus-out", default=None,
                     help="directory for gate 22 to regenerate the corpus into; "
                          "gate 22 is skipped when omitted")
+    ap.add_argument("--edited-ids", default=None,
+                    help="comma-separated text block ids this image edited, e.g. "
+                         "047C,048F. Enables gate 44, CARRIER COVERAGE, which "
+                         "checks EVERY carrier of each id in BOTH media and "
+                         "reports N/N. Without it gate 44 renders a NOTE, "
+                         "because a build that does not declare what it edited "
+                         "cannot be checked for having missed a copy.")
     args = ap.parse_args()
 
     rep = Report()
@@ -838,6 +878,57 @@ def main():
                     else ", character totals not pinned off-source"))
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
+
+
+    # 44  CARRIER COVERAGE.
+    #
+    # DQ4_2026_08_27_INN.bin passed 35 gates and shipped with 0x047C English in
+    # 65 of its 69 carriers: the four TYPE 44 copies were still Japanese. No
+    # gate covered carrier coverage, so nothing failed.
+    #
+    # scratch/p119/carriers.py had written the warning down -- "if a type 44
+    # carrier holds a byte-different copy of the same id, editing the type 46
+    # copies leaves that one Japanese" -- and it never fired, because a note in
+    # a file is not a gate. This is that note, promoted.
+    #
+    # An id lives in more than one carrier and in more than one MEDIUM: the
+    # executable, type 40/42 sub-blocks, type 44 overlays and type 46 overlay
+    # images. A build that rewrites one medium and not the others produces an
+    # image whose every structural gate passes and whose text is half
+    # translated.
+    if args.edited_ids:
+        want_ids = []
+        for tok in args.edited_ids.split(","):
+            tok = tok.strip()
+            if tok:
+                want_ids.append(int(tok, 16))
+        rows44 = []
+        for tid in want_ids:
+            copies = _carriers_of(arch, exe, tid)
+            if not copies:
+                rows44.append((tid, 0, 0, "id not located in any carrier"))
+                continue
+            # Group by the block's own bytes. Every carrier of one id should
+            # hold the same block after a build; a carrier holding a different
+            # payload is a copy the build did not reach.
+            groups = {}
+            for where, blob in copies:
+                groups.setdefault(hashlib.sha256(blob).hexdigest(), []).append(where)
+            top = max(groups.values(), key=len)
+            rows44.append((tid, len(top), len(copies),
+                           "" if len(groups) == 1 else
+                           "%d distinct payloads; smallest group: %s"
+                           % (len(groups),
+                              ", ".join(sorted(min(groups.values(), key=len))[:4]))))
+        ok44 = all(n == m for _, n, m, _ in rows44) and bool(rows44)
+        detail = "; ".join("%04X %d/%d%s" % (t, n, m, (" " + w) if w else "")
+                           for t, n, m, w in rows44)
+        rep.gate(44, "carrier coverage, every carrier of every edited id", ok44,
+                 detail, "N/N on every declared id, both media")
+    else:
+        rep.note(44, "carrier coverage",
+                 "SKIPPED, no --edited-ids. A build that does not declare what "
+                 "it edited cannot be checked for having missed a copy.")
 
     return 0 if rep.summary() else 1
 

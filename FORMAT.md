@@ -459,8 +459,43 @@ Located in `SLPM_869.16`. One little-endian u32 per level.
 
 | Field | Bits | Meaning |
 |---|---|---|
-| length | `v >> 20` | 12 bits, in sectors |
+| length | `(v >> 20) & 0x7FF` | **11 bits**, in sectors. **Max expressible `nsec` is 2047** |
+| flag | `v >> 31` | **1 bit. PRESERVE IT; it is not part of the length** |
 | lba | `v & 0xFFFFF` | 20 bits, **absolute disc LBA** |
+
+> **CORRECTED IN PLACE, 2026-08-27, AND NO FIGURE BELOW CHANGES.** This table read
+> `length = v >> 20`, 12 bits, with no flag row. **MEASURED Phase 113, from the reader at
+> `0x800592CC`, which does `srl 20` then `andi 0x07FF`: the length field is ELEVEN bits and bit 31
+> is a separate flag.** Every count in this section was taken over well-formed shipped entries,
+> where bit 31 is clear and the two decodes agree, **so nothing measured under the old form is
+> retracted.** What the old form would break is a WRITE: **an entry rebuilt as `length << 20 | lba`
+> drops bit 31**, and Phase 113 lists that among the corrections that would have corrupted a build.
+
+### Relocation: what rewriting one of these entries is proven to do
+
+**A block is relocated by rewriting its table entry. Four bytes. That is the whole mechanism**, and
+`docs/CODEX.md` is not where this belongs because it is a format fact.
+
+> **THE LABEL, and it is to be carried in these words: the loader honors a changed `lba` --
+> MEASURED, for the blocks tested, with a failing companion. That EVERY entry does -- INFERRED from
+> format uniformity.**
+
+**MEASURED on hardware:** one block relocated with its entry updated plays; the same block with the
+entry left stale hangs at the chapter card; a 16-copy group with all 16 entries updated plays; the
+same group with one entry stale plays normally, **predicted in advance**; and 23 blocks relocated on
+a real build with the table invariant at 3,241 and zero unmapped entries.
+
+**INFERRED: that all 3,241 entries behave identically.** Four blocks and one group were exercised.
+
+**AND THE WARNING THAT COMES OUT OF THE SAME PILOT: BOOTING CANNOT DETECT A PARTIAL RELOCATION.**
+Fifteen good copies mask one bad one, and **71 of 72 byte-identical block groups hold no drawable
+text at all**, so for those a missed copy is invisible to any amount of play testing. **The defense
+is the build-time invariant over the whole table, not a play test.**
+
+**Two further consequences for anyone writing an entry**, both MEASURED Phase 113: **`nsec` is
+stored TWICE**, in the table entry and in the block header at `+4`, and both move for every copy;
+and **the table holds 3,281 usable entries, not 3,283** -- the last two words are overlay load
+addresses and writing them corrupts the build.
 
 | Property | Value |
 |---|---|
@@ -1782,13 +1817,42 @@ multiplies a mean is a character gate wearing units.
 build with a deliberately 26-character unnamed line 0 on a prefix-live call site.** Until that
 boots, treat the extra headroom as unproven and keep authoring to the old budget.
 
+#### A NAME CODE IS CHARGED AT EIGHT CHARACTERS
+
+**DECIDED 2026-08-27, phase 118. Names are sized at EIGHT CHARACTERS throughout, so every name code
+in a line is charged at its eight-character width and not at the width of the short token it shows
+in an editor.** This is the units model's half of the decision; the authoring half is R15 in
+`corpus/editorial/voice-sheet.txt`.
+
+**A name code has no width of its own, and that is why this belongs here rather than only in the
+voice sheet.** The engine substitutes glyphs and then sums THEIR widths through the model above, so
+what a name costs depends on which letters the player typed. **Eight characters is a BUDGET, not a
+measurement**: it fixes how many glyphs may arrive, and the unit cost of those eight still varies
+with the glyphs. **A line that fits at the mean can clip at eight capitals**, which is point 5 of
+this section aimed at a substitution instead of at typed text, and it is why the character figure
+cannot be the whole answer here either.
+
+**It supersedes the 5-cell name budget used in the Phase 46 build**, which is not retracted: it was
+true of that build. `voice-sheet.txt` R8 carried a pointer to that figure and has been corrected in
+place.
+
+**Cost of the decision, MEASURED and isolated: 29 lines were fixed to clear eight characters, with
+zero meaning loss**, proven token for token against a control that catches a deleted word. **Zero
+lines are over at four characters and zero at six. Everything that is over is over at eight**, so
+the cost does not grow with the width; it is those 29 lines.
+
+**The consequence for a named box's line 0 is already recorded**, in `voice-sheet.txt` 2.3f, which
+assumed eight before it was decided: **where the name code IS the tag, the tag alone is 9 cells.**
+
 #### Three limits on the measurement itself
 
 - **224 is measured on 55 blocks that were all the standard dialogue box.** Other window types are
   not covered by it.
 - **13,553 of 16,434 strings were excluded from the unit census** for carrying a substitution
   code, leaving 2,881. That is **82.5 percent excluded**, large enough that **the strata comparison
-  must not be leaned on.**
+  must not be leaned on.** **And that exclusion is exactly the population the eight-character charge
+  above governs**, so the unit census says nothing about lines carrying a name and cannot be used to
+  check that charge.
 - **The shipped game did NOT settle the prefix question.** Charging the prefix costs **22 extra
   violations in 3,581 lines, 0.6 percent**, which is not a falsification either way: **Japanese
   never runs tight enough against 224 for 15 units to show.** That was reported as a refusal rather

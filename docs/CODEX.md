@@ -15,7 +15,23 @@ Most of this is general. Entries marked **[PSX]** are platform specific.
 
 ## 1. Validate the instrument against a case where the thing is present
 
-**Eighteen instances. The most expensive rule here. Its worst single instances cost twenty-five phases, fifteen phases, and a boot test.**
+**The most expensive rule here. Its worst single instances cost twenty-five phases, fifteen phases, and a boot test.**
+
+> **THE INSTANCE COUNT IS OPEN AS OF 2026-08-27, and it is flagged rather than replaced, because
+> replacing it would be the defect this file's own footer describes.** This line read **eighteen**.
+> A recount against the body could not reproduce that figure and could not produce a defensible
+> single figure either: **three of the corollaries below carry more than one episode each** (the
+> static-value corollary holds two, the identity-test corollary says "two of these in three
+> phases", and the referrer corollary says "three builds in a row"), so **the answer is twenty or
+> twenty-two depending on whether an instance is a CASE or a COROLLARY, and the file has never
+> said which.** A second instance was added below on 2026-08-27, which moves whichever figure is
+> right by one.
+>
+> **The remedy is a definition, not a number, and it is not applied here because applying it would
+> mean rewriting eighteen headers in one pass with nobody to check them.** Until it is: **treat
+> rule 1's instance count as UNCOUNTED.** No figure for it may be quoted, here or in any file that
+> points at this one. **A count that cannot be reproduced from the text below it is not a
+> measurement, and carrying it as one is what put five stale figures into `docs/BOARD.md`.**
 
 Before trusting a negative result, run the detector against something you know it should find. A
 scan that returns zero is not evidence until you have seen it return non-zero.
@@ -188,6 +204,35 @@ missing references were not hiding in an unsearched region; they were not words.
 exhaustive search returns zero for something that demonstrably happens, stop widening the search and
 question what you are searching FOR.**
 
+**SECOND INSTANCE, Phase 118, and it is not a repeat: the first cost a COUNT, this one cost a
+SHIPPED DISC.** The same blind spot moved from the enumerator to the REWRITER. When a block was
+re-encoded and its string offsets moved, the referrer rewriter updated every reference it could
+find and **could not find any of the seven that address that block, because every one of them is a
+split immediate.** Six broke and the priest's slot list drew empty at every priest. **A manifest
+row read PRESENT and the text was unreachable**, because the strings were present; nothing pointed
+at them. **The seventh survived because string 0 sits at bit offset 0, and offset 0 never moves.
+That is what proves the diagnosis rather than merely fitting it.**
+
+**And the difference between an undercount and a broken disc is where the blind instrument sits.**
+An enumerator that cannot see a form reports a low number that someone may notice. **A rewriter
+that cannot see a form silently declines to fix it, and the build is green**, because the gate was
+handed the same list the rewriter used. Rule 4, and rule 1's referrer corollary above.
+
+**The blind spots are a list of FORMS, not a count of sites, and a count of sites is the wrong
+deliverable here.** Recorded because each one defeats a different filter:
+
+- **`lui` + `ori`.** The composed word exists only at runtime.
+- **`lui` + `addiu`.** The `addiu` is SIGN EXTENDED, so **the upper half is off by one when bit 15
+  is set** and a filter keyed on the expected `lui` immediate MISSES THESE.
+- **`lui` plus the offset field of `lw`/`lb`/`sw`, with no second arithmetic instruction at all.**
+- **Non-adjacent pairs**, with unrelated instructions scheduled between the halves.
+- **`$gp`-relative loads**, where neither half names the address.
+- **Overlays as well as the main executable.** A sweep scoped to one image is scoped to one image.
+
+**A tool that pairs halves by scanning forward with a register-clobber model is APPROXIMATE by
+construction, and it must say so in its own output.** The instrument built for this one does, in
+its own comment: **absence is evidence, not proof.**
+
 Corollary, and it is the rule pointed at an INSTRUMENT rather than a search: **an instrument that
 uses the thing it is measuring as its own identity test cannot report a discrepancy.** Two of these
 in three phases, and they are the same shape as the enumeration corollary above. A figure for
@@ -199,6 +244,86 @@ against its template, so a record whose geometry had been overridden at runtime 
 as a record at all, and the tool reported perfect agreement while sitting on two overrides.
 **Before trusting an instrument, ask what it would report if the thing it measures were different
 from what you expect. If the answer is "nothing", it is not an instrument.**
+
+### The remedy has a REPORTING FORM, and `pass` is not it
+
+**Recorded Phase 118. The diagnosis half of this is already above and in rule 30**, which works
+through a search that returns zero whether or not the thing exists and names that blind. **What was
+never written down is what the validating run should PRINT, and it is not a boolean.**
+
+The occasion: a census over a block reported **zero referrers**, and that was the exact output the
+card blocks had produced one hour before the split immediates were found. **Two readings, and
+nothing in the output separates them.**
+
+| reading | meaning |
+| --- | --- |
+| no referrers exist | the text is genuinely orphaned |
+| referrers exist in a form neither scan sees | the failure above, one layer deeper |
+
+> **The discriminator is not a better search. It is running the scanner against a set of
+> references that are KNOWN to exist and reporting `found/6`, not `pass`.**
+
+**A fraction names its own denominator; `pass` conceals it.** `pass` is what a scanner prints when
+it recovered every known reference AND what it prints when the harness handed it nothing, and those
+are the two cases the harness exists to tell apart. This is rule 33's form applied to a VALIDATION
+RUN rather than to a finding, and it is the leg rule 33 does not cover: 33 governs how you state an
+answer, this governs how the instrument that produced it reports on itself.
+
+**AND THE CONSEQUENCE IS RETROACTIVE, WHICH IS THE HALF THAT IS EASY TO DROP.**
+
+> **If the harness does not recover all six, every clean result that scanner has already produced
+> reverts to UNCONFIRMED**, including sweeps that were used to clear other faults. A scanner is not
+> re-validated by the phases it has survived.
+
+**And a zero that has not been through this says nothing, including a zero that is currently
+blocking a decision.** Twenty-six authored strings sat unshippable on a zero-referrer measurement
+that had never been put against a known-present case. **The cost of leaving that zero unvalidated
+is not a wrong answer; it is a decision made against a number with no meaning yet.** Rule 28's
+shape, and rule 33's remedy.
+
+**PRIOR-SOLVED IS AN INSTRUMENT TOO.** When the same engine shipped in another language and that
+release reaches the strings in question, **how its code addresses the block NAMES THE FORM to look
+for**, and it costs one read rather than another sweep. See the reframing section's closing form.
+
+### A worked example of the reporting form, 2026-08-27: the screenshot reader
+
+**Added as an EXAMPLE, not as a new rule.** It is the same failure as the census corollary above,
+in a different medium, and the point of recording it is that the shape was recognizable while the
+run was still going.
+
+A bisect needed to know which build first showed a hang. The marker was the emulator's on-screen
+frame counter, so a reader was written to classify every frame in a large screenshot corpus as
+running or stopped. It **matched the status bar as an exact block of RGB values.**
+
+**It came back clean on 1,170 of 1,452 frames it could not read at all.** The text was plainly
+present in every one of them. The cause is **subpixel text rendering**: the same string drawn at a
+different sub-pixel offset gets different color fringes on its glyph edges, so an exact-color test
+matches the frames that happen to land on a whole pixel and silently misses the rest.
+
+> **A reader that cannot see the counter and a build that never stopped PRODUCE IDENTICAL OUTPUT.**
+> **This is the referrer census in a different medium: "no referrers found" and "no referrers
+> visible to this scan" are the same string.**
+
+**Three things made it recoverable, and all three are the reporting form rather than the fix:**
+
+1. **The blind count was reported as a NUMBER, not folded into the clean count.** The corrected
+   reader binarizes on luminance with a tolerance and reports **100 unresolved**, every one of which
+   was then sampled by hand and found to hold an ordinary non-target value. **Unresolved is a third
+   outcome and it must survive to the summary.** A two-valued report has nowhere to put "I could not
+   see this one."
+2. **A second self-inflicted blindness was caught by a control the instrument had ALREADY PASSED.**
+   A prefilter was added with a budget tighter than the verifier's own tolerance, so the fast path
+   rejected frames the slow path accepted. **It failed a control it had passed an hour earlier**,
+   which is the cheapest possible detection and only exists if controls are re-run rather than
+   retired.
+3. **BOTH BLIND VERSIONS WERE KEPT AND MARKED, NOT DELETED.** They are on disk labelled
+   **SUPERSEDED, BLIND**. Deleting a bad instrument destroys the only evidence of what its clean
+   output looked like, and the next person to write one will write the same thing.
+
+**And the retraction landed inside the same run that produced the result**, so the finding and its
+correction arrived together rather than the finding standing alone for a week. **That is what
+`found/N` buys over `pass`: a run that reports how much it could see is a run that can notice it
+saw nothing.**
 
 ## 2. Check a hypothesis against BOTH halves of the symptom before testing it
 
@@ -1167,7 +1292,371 @@ one grep. Each would have returned a hit.
 must already have needed in order to get this far.** A gate that passes already contains the test it
 passes on. A number quoted in a phase report already came from somewhere.
 
+## 37. Do not re-encode what has not changed
+
+**Recorded Phase 118, and it is the only entry here that REMOVES a class rather than detecting
+one.** Every other rule in this file makes a failure visible. This one arranges for the failure not
+to be available.
+
+> **A block that is not re-encoded does not move its string offsets. Every reference into it stays
+> valid BY CONSTRUCTION: word form, split immediate, or a form nobody has found yet.**
+
+**That last clause is the whole entry.** Rule 1's referrer corollaries and rule 30 are DETECTION,
+and both of them depend on knowing every reference form there is. **This one requires knowing
+none of them.** It is the only remedy in this file that is safe against blind spots that have not
+been measured, which is exactly the class that has cost the most here.
+
+**Four rules, and they are not guidance:**
+
+1. **Default: never re-encode a block whose input hash is unchanged.** Copy the previous encode.
+2. **The hash covers the strings, the dictionary, the encoder version, the per-block parameters
+   AND the global build configuration.** Scoped to the strings alone it **silently serves a stale
+   encode after an encoder change**, which is a worse failure than the one it was added to prevent,
+   because it looks like a cache hit rather than like a defect.
+3. **When such a block's text genuinely must change, PIN its string bit-offsets to their pristine
+   values. Pad, do not repack.** Paying bytes is cheaper than moving an offset a reference form you
+   cannot see is holding.
+4. **Companion, two legs, and BOTH must fire.** Change one string: **only that block re-encodes.**
+   Change only the encoder version and nothing else: **every block re-encodes.** **If the second leg
+   does not fire, the hash is under-scoped**, and it will keep passing the first leg while doing so.
+   Rule 6 in `docs/DRIFT.md`, and rule 3 above.
+
+**Its relation to rule 20, because read carelessly they point opposite ways.** Rule 20 says data the
+build carries through unchanged is verified by nothing. This says carry it through unchanged. **They
+compose, and rule 20 supplies the missing half: gate the carried data against the PRISTINE
+artifact.** Skipping the re-encode is what keeps the references valid; decoding the carried bytes
+and comparing them to pristine is what keeps the skip honest. **A skip with no such gate is a cache
+nobody checks, and rule 20 is the entry about exactly that.**
+
+**Cost: the whole class, on every build, until it exists.** Stated that way on purpose. This entry
+has no single expensive instance behind it because it was specified after the instance that
+motivated it was already being fixed a different way, and **an entry whose cost is prospective
+should say so rather than borrow the cost of the defect it would have prevented.**
+
+## 38. A status field is a CLAIM, and it needs a reference like any other
+
+**`SENT` must be derived from something other than the field that says `SENT`.**
+
+This is the FPS reader one level up. There, an instrument that could not see the screen and a run
+with nothing to see produced the same output. Here, **a job that was dispatched and a job whose
+status field merely says it was dispatched produce the same output**, and the second one is not
+doing any work.
+
+**It has now failed in both directions in the same project, which is what makes it a rule rather
+than a slip:**
+
+| | what the record said | what was true |
+| --- | --- | --- |
+| **four times** | nothing | **dispatched, and never written down** |
+| **once** | **`SENT`** | **never dispatched** |
+| **twice more** | described in conversation as "running in parallel, unchanged" | **one existed only as a specification inside a brief marked QUEUED, NOT SENT; the other did not exist anywhere in the tree** |
+
+**The second row is the dangerous one**, because the first row's failure is discovered the moment
+someone looks for the record, and the second row's failure is discovered only when someone waits
+for a result that was never coming. **The work was planned around three jobs, and one of the three
+was real.**
+
+### The remedy is mechanical and it is one line
+
+> **WRITE THE STATUS FIELD WHEN THE SEND RETURNS. Never before, and never from intent.**
+
+**Nothing else may write it.** Not the author finishing the brief, not a summary, not a plan that
+says what will happen next. **A brief is written before it is sent - that discipline is separate and
+still correct - but the STATUS is a record of an event and may only be written by the event.**
+
+### The general form, and it is the reusable half
+
+**Any field that records whether something happened is a measurement of the world, and inherits
+every rule in this file.** It needs a reference outside itself, and **the reference cannot be the
+document it lives in.** A record that says a thing is true, kept by the person who wants it to be
+true, checked against nothing, is the anchor problem in prose: **a check whose reference is derived
+from its subject cannot fail.**
+
+**A tell that costs nothing to look for:** if you are about to report that several jobs are running,
+**grep the tree for each one by name first.** Two of the three that were reported as running on
+2026-08-27 left no trace at all - one word appeared **nowhere** in the entire documentation tree.
+**That search takes seconds and it is the reference the status field did not have.**
+
+## 39. Independent results require independent INPUTS, not independent code paths
+
+**Two scans reported zero referrers for the same block. That was recorded as corroboration. It was
+one measurement printed twice.**
+
+The word scan and the split-immediate scan are **different code, different authors' intent,
+different failure modes**, and everything about them looks independent from outside. **They resolve
+against the SAME `index()`.** That index was scoped to three carrier types and the block in question
+lives in a fourth, so **`res()` returned `None` unconditionally in both.** Neither scan ever searched
+for it.
+
+> **Agreement between two tools is evidence only to the extent their INPUTS differ. Shared state
+> upstream of both makes them one instrument wearing two names.**
+
+**The tell is cheap and nobody looked for it**: trace each result back to the data it was computed
+from, and **stop when the two traces meet.** Everything above the meeting point is common, not
+corroborating. Here the traces met immediately, at the first shared call.
+
+**This is the general form of the anchor problem.** There, a check's reference derived from its
+subject. Here, **two checks' references derive from each other's**, which is harder to see because
+neither check is individually circular.
+
+**COST: 26 authored strings marked CANNOT BE SHIPPED on a doubled zero**, plus a recorded belief
+that the population had been searched twice. **The corrected statement is that it had not been
+searched at all**, and the real search, once run against the decoded block with positive controls,
+took one leg.
+
+**The corollary for reporting:** when you write "confirmed by two independent X", **name what makes
+them independent.** If you cannot name it in one clause, they are not.
+
+## 40. Every classifier needs a residual bin, and a residual of ZERO is a claim needing its own evidence
+
+**A classifier that sorts everything into the categories it knows about has not found that
+everything fits. It has found that it has no way to say otherwise.**
+
+**Three instances in one night, in three unrelated instruments:**
+
+| instrument | the missing bin | what it produced instead |
+| --- | --- | --- |
+| a screenshot reader | **unreadable** | **1,170 frames it could not read, reported as the clean value** |
+| a reference index | **carrier types not enumerated** | a block that was never searched, reported as **zero referrers** |
+| a block census | **types that could not be classified** | a denominator derived from **four hand-picked types**, quoted as a total |
+
+**All three are the same shape**: a two-valued output where the world has three states, so the third
+state is silently distributed into the other two - **and always into the reassuring one.**
+
+> **The remedy is structural, not diligence. The third bucket must EXIST, must be a NUMBER, and must
+> SURVIVE TO THE SUMMARY.** A count that is folded into "clean" before anyone reads it may as well
+> never have been taken.
+
+**And the follow-through that is easy to skip: a residual of zero is itself a claim.** "Nothing was
+unclassifiable" and "I had no category for unclassifiable" are the same output, **which is this
+whole rule applied to its own remedy.** So say HOW zero was established. Sampling the residual by
+hand is enough. Asserting it is not.
+
+**A residual bin is also where the next finding usually is.** The eight blocks invisible to the
+reference index were not a defect to be patched and forgotten - **they were a population**, and the
+same eight had already been reached by a completely different route months earlier. **The bin nobody
+built was holding the answer.**
+
+### SCOPE ERRORS AND SHAPE ERRORS ARE NOT THE SAME DEFECT, and only one of them is catchable by asking
+
+**The corrected version of the census above was still wrong, and wrong in a way the correction could
+not reach.** Told that its denominator came from a hand-picked type list, it re-derived the total
+across **all 37 types present**, all bytes outside every parsed block, and **every file in the
+container.** Thorough, and it still missed two, **because the two blocks it missed live in no
+sub-block of any type.** They were not outside the scope. **They were outside the SHAPE.**
+
+| defect | the question that catches it | why |
+| --- | --- | --- |
+| **scope** | "did you look everywhere?" | the honest answer is **no** |
+| **shape** | "did you look everywhere?" | the honest answer is **YES**, and it is wrong |
+
+> **A scope error is a gap in a survey. A shape error is a survey of the wrong kind of thing.**
+> Asking for more coverage fixes the first and **confirms** the second.
+
+**The question that does reach it is not about coverage at all:** *what would an instance look like
+that my enumeration has no ROW for?* Here the enumerator walked sub-blocks, so **anything not in a
+sub-block was uncountable rather than uncounted** - a distinction that never appears in the output.
+
+**The tell, when you have it, is two routes disagreeing on the total rather than on the contents.**
+When one route finds 5 the other cannot see and the other finds 2 the first cannot see, **the
+directions of the two misses name the two shapes.** One route missing things in one direction only
+is a scope gap; **misses in both directions mean the routes are enumerating different universes.**
+
+## 41. A property that holds THROUGHOUT a process cannot certify the process is COMPLETE
+
+**A file being copied sector by sector is at an exact sector multiple at EVERY INSTANT OF ITS
+LIFE.** So "its size is an exact multiple of the sector size" is true of a transfer that finished,
+a transfer half done, and a transfer that failed on its first block. **It cannot distinguish them,
+and it was used to report one as the other.**
+
+**This is the anchor problem in the time dimension.** There, a check's reference derived from its
+subject. Here, **the check's evidence is an invariant of the process it claims to be measuring the
+end of.** An invariant is precisely the thing that carries no information about progress.
+
+> **Before accepting any completeness check, ask: WHEN DID THIS BECOME TRUE? If the answer is "at
+> the start", or "always", it certifies nothing.**
+
+**A second, weaker check was stacked on it and inherited the same defect:** the size was observed
+**stable across an interval**, which felt independent and is not - a transfer stalls, throttles, or
+is between writes, and stability over one sample says nothing. **Two bad checks agreeing is one bad
+check, which is the shape of entry 39.**
+
+**The sound checks were available and cheaper.** The image had **no ISO9660 primary volume
+descriptor at all** - sectors 16 to 31 entirely zero - and **1,952 of 2,000 sampled sectors were
+zero.** It **grew by 46 MB while being read.** Any of the three would have settled it. **The right
+check asks for something that is FALSE UNTIL THE END and true after: a terminating structure, a
+declared total compared against the actual, or a hash against a known-good value.**
+
+**COST here was small, one deferred question. The rule is recorded because the shape is not
+specific to files:** a build "looks complete" because every intermediate is well-formed; a
+migration "looks done" because every row processed is valid; a scan "looks exhaustive" because
+every result it returned was correct. **In all of them the property being checked was never absent
+at any point, so its presence at the end means nothing.**
+
+**And note where this one was caught: in the checker's own reasoning, unprompted, not by the
+instrument and not by review.** That is the cheapest place, and it is available only if you are in
+the habit of asking what a passing check would have looked like if the thing had failed.
+
+## 42. A sub-agent must not ratify a JUDGMENT call, and must absolutely refute a FACTUAL one
+
+**These pull in opposite directions and both are required. Getting only one produces either a
+rubber stamp or a runaway.**
+
+**The judgment half:** a delegate may author, measure, gate and propose. **It may not decide a
+naming call, an editorial convention, or anything whose answer is a preference rather than a
+measurement.** The trap is that **a proposal and a ratification look identical once the text is in
+the file**, and the file is what the next delegate reads. So the open ones live in one named list,
+and **being written into an authored artifact is not evidence the call was made.**
+
+**The factual half, and it is the one that gets trained out:** when a delegate holds a measurement
+that **refutes the instruction it was given, the measurement wins and it should say so.**
+
+**The worked case.** A brief said, in capitals: *"THE 2014 BUILD IS A DIFFERENT PROJECT FROM THE v1.2
+PATCHES. Do not conflate them."* Reasonable, defensible, and **wrong.** The delegate measured
+instead of complying: **a 96-byte glyph width table byte-identical across the two, 0 of 96 differing,
+and 394 of 394 injected bytes matching.** Same project.
+
+> **That refutation was load-bearing, not pedantic. It licensed reading code out of the COMPLETE
+> older build and applying it to the patched one.** An agent that had obeyed would have been slower
+> and no safer, and would have reported a correct result by a worse route while leaving the false
+> instruction standing in the record for the next person.
+
+**The distinguishing question is not "how confident am I", it is "what KIND of claim is this?"**
+
+| the instruction asserts | the delegate should |
+| --- | --- |
+| **a fact about the artifact** | **test it, and refute it if the measurement says so** |
+| **a preference, a name, a convention** | **follow it, propose alternatives, never overrule** |
+
+**A brief's factual premises are not orders. They are the author's current best reading, and the
+delegate is standing closer to the data.**
+## 43. A note recorded as an OBSERVATION does not block anything
+
+**The gap was written down, in the right file, by someone who understood it - and it did not fire
+for 26 phases.**
+
+A corpus file carried this line in its own footer:
+
+```
+THE 152 TYPE 44 SUB-BLOCKS - no tool covers them at all.
+```
+
+**That is the exact reason the project could not see a referenced text block, stated plainly, in the
+document about that block.** Everyone who worked on it read past it. **26 phases later the block
+turned out to have 26 referrers sitting in the shipped archive the whole time**, and the reference
+was **found every single time and discarded at the resolve step.**
+
+> **The note was correct, well-placed, and completely inert. It described a condition instead of
+> asserting one.**
+
+### The distinction that matters
+
+| form | what it does when someone runs the build |
+| --- | --- |
+| **an observation** | **nothing** |
+| **a gate** | **fails** |
+| **a residual bin** | **prints a number that has to be explained** |
+| **an `UNCONFIRMED` in the output** | **contaminates every claim downstream of it** |
+
+**Prose in a document is the weakest of the four and it is the one everybody reaches for**, because
+it is the only one that costs nothing to write. **That is exactly why it does not work: it also
+costs nothing to skip.**
+
+### The rule
+
+> **When you record a limitation, ALSO record what it is allowed to break.** If a known gap cannot
+> make anything fail, print a number, or taint a result, **it is a diary entry, not a control.**
+
+**The cheapest promotion, and it is usually available:** turn the sentence into **a count the tool
+emits every run.** "No tool covers type 44" becomes **"152 sub-blocks not scanned"** on every
+report. **A number that appears beside a clean result is read; a paragraph in a file three
+directories away is not.**
+
+**And the corollary for tooling, which this project has now paid for twice:** a codex that is
+**readable by people** and **not greppable from the tools** will keep producing this failure. The
+rule lived where it applied and still did not propagate, **so the fix is not "write it down more
+clearly" - it is to make the machine carry it.**
+
+### THE REMEDY THAT WAS ACTUALLY ADOPTED: ATTACH THE GAP TO THE JOB
+
+**Writing the limitation better was never going to work, because it was already written well.** What
+was missing is that **nothing consumed it.**
+
+> **Every known blind spot is ATTACHED to the job it invalidates, and the job cannot report clean
+> without naming it.**
+
+**A register of blind spots, each with what it invalidates. Every brief carries the rows that touch
+it. A report may not say `clean`, `zero`, `none found` or `PASS` without naming its attached rows
+and saying, for each, WHAT ITS RESULT WOULD LOOK LIKE IF THE BLIND SPOT WERE THE CAUSE.**
+
+**The test is one sentence: COULD THIS JOB RETURN EXACTLY THIS OUTPUT WITH THE BLIND SPOT AS THE
+WHOLE EXPLANATION? If yes, the output is UNCONFIRMED, not clean.**
+
+**This is cheaper than a gate and works where a gate cannot** - it can be written for a limitation
+**nobody yet knows how to test**, which is the exact case where the observation gets written instead
+and then ignored. **And closing a row takes a measurement rather than an argument; rows are edited
+in place and never deleted, because a closed row is the record of what a clean result used to look
+like when it meant nothing.**
+
+**Cost: 26 phases, 26 authored strings marked unshippable, a published claim of orphanhood, and a
+capture session commissioned to answer a question the archive had already answered.**
 ---
+
+---
+
+## 44. A loop written against a FIXED-WIDTH source hides an off-by-one until VARIABLE-WIDTH input arrives
+
+**Cell math that is correct for every input the author ever had is not correct code. It is code whose
+defect has no reachable witness.** Change the input distribution and the defect activates without
+anything having been edited.
+
+**The instance cost six weeks.** A party name is padded out to a four-character field:
+
+```
+addiu t0,zero,4      ; the field width
+subu  s0,t0,v0       ; s0 = 4 - n
+addiu s0,s0,-1       ; s0 = 3 - n
+beq   s0,-1,exit     ; <- EQUALITY against the boundary, not a SIGN test
+```
+
+**Every Japanese party name in the shipped game is 4 fullwidth characters or fewer, so `3 - n` lands
+EXACTLY on -1 every time and the guard always fires.** At n = 5 the counter starts **below** the
+value it tests for, the guard misses, and it counts down through zero and wraps: **4,294,967,294
+iterations**, each emitting a sprite packet through an allocator with no bound. **Enix's defect,
+latent since 1990, activated by English names. Nothing we wrote was wrong.**
+
+**This is the same class as wide-character handling in terminal libraries** - column arithmetic that
+holds for uniform-width input and breaks when width varies. **It is not a domain-specific romhacking
+problem and the general form is worth carrying to any codebase.**
+
+### WHERE TO LOOK FOR THE OTHERS
+
+**Three signatures, and they are greppable:**
+
+1. **Any loop computing a COUNT from a FIELD WIDTH.** `width - length` is the shape. Ask what
+   guarantees `length <= width`, and whether that guarantee is a check or an accident of the data.
+2. **Any buffer sized to a CHARACTER COUNT rather than to BYTES.** In a mixed-width encoding those
+   are different numbers, and the one that matters is the one the writer uses.
+3. **Any comparison testing EQUALITY AGAINST A BOUNDARY instead of sign or bound.** `== -1`, `== 0`,
+   `== max` where `< 0`, `<= 0`, `>= max` was meant. **Equality is only safe when the step size
+   divides the distance exactly, which is exactly the assumption a wider input breaks.**
+
+### THE INSTRUMENT POINT
+
+**A fixed-width assumption cannot be found by testing with the data the author had.** The shipped
+game exercises this loop on every status screen and never fails. **The test that finds it is a
+LONGER STRING, and if the corpus cannot produce one, the test has to fabricate one.** Property tests
+over the width parameter, not example tests over the shipped corpus.
+
+**Corollary, and it is the cheap half:** when a defect activates on new input, **check whether the
+original code was already wrong before assuming the new input introduced it.** Six weeks here were
+spent looking for what our edits broke. **Nothing we edited was broken.** The question "is this
+latent or introduced" is answerable early and cheaply by reading the guard, and it routes the entire
+investigation.
+
+**Cost: six weeks of hypotheses, four discs built to test wrong theories, a wrap mechanism
+investigated at length that DOES NOT EXIST in this engine, and a name-length ceiling that shaped
+editorial decisions across three phases before it turned out to be removable in one word.**
 
 ---
 
@@ -1251,9 +1740,12 @@ having only while every entry has a measured before and after.
 
 ---
 
-**36 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
-taken by counting the instances written under each entry: rule 1 has eighteen, rule 4 has five,
-and **rules 5, 9, 23, 32, 35 and 36 have two each**. Everything else has one. **Rules 23 through 26 are one family**,
+**37 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
+taken by grepping every "instances" sentence in this file and attributing each to the `## <n>.`
+heading above it: **rule 4 has five**, and **rules 5, 9, 23, 32, 35 and 36 have two each**.
+Everything else has one. **RULE 1 IS UNCOUNTED**, and that is a state rather than an omission:
+its own header carries the reason, dated 2026-08-27, and no figure for it may be quoted until
+this file says what an instance is. **Rules 23 through 26 are one family**,
 a measurement that is true and a conclusion that is not, and **27 through 31 are that family
 aimed at five different honest reports**: a script's success line, a tool's own report about
 itself, the observed range of a system's output, a search that returns zero, and a limit the
@@ -1270,7 +1762,11 @@ which is blind in both directions and can clip. **36 is the one rule here that i
 a measurement wrong**: every other entry describes an answer that was wrong, misread, or wrongly
 scoped, while 36 describes a correct answer arrived at twice. **Its near neighbor is rule 6's "prior
 documentation is a source of hypotheses, not facts", and it points the opposite way**: 6 governs
-what you may conclude from what you found, 36 governs whether you looked. The count above was taken by counting the `## <n>.` headings in this file, not by
+what you may conclude from what you found, 36 governs whether you looked. **37 is the only entry
+here that removes a class instead of detecting one**, and it is deliberately the last: every other
+rule makes a failure visible, and 37 arranges for the failure not to be available. **It is also the
+only entry whose cost is PROSPECTIVE**, which its body says in as many words rather than borrowing
+the cost of the defect it would have prevented. The count above was taken by counting the `## <n>.` headings in this file, not by
 adding one to the previous figure.
 
 **CORRECTED IN PLACE, 2026-08-26, and it is this footer's own defect a third time.** The instance
@@ -1292,6 +1788,31 @@ was hidden.
 and outside the rule it belongs to, where a heading-based count could not see it and returned
 sixteen. It has been moved back inside rule 1. A count that disagrees with a header is a
 question about where the text lives before it is a question about the header.
+
+**RE-COUNTED AGAIN, 2026-08-27, when rule 37 was added and Phase 118's three durable findings were
+recorded.** `grep -c "^## [0-9]\+\."` returns **37**. The instance list was regenerated by the same
+grep, not amended, and it changed in one way that is not an addition: **rule 1's figure of eighteen
+was WITHDRAWN rather than updated.**
+
+**That withdrawal is the maintenance event worth reading, because it is this footer's own defect in
+a fourth costume.** The three earlier corrections here all ended in a better number. **This one ends
+in no number**, because a recount could not reproduce eighteen and could not defend a replacement:
+**three of rule 1's corollaries each describe more than one episode**, so "counting the instances
+written under each entry" has two readings that differ by two, and nothing in this file picks one.
+**Choosing one silently and printing the result would have looked exactly like a correction while
+being a fresh unsourced figure**, which is the shape of every stale count this footer has had to
+retract. **A count you cannot derive twice the same way is not a count.** The definition is the fix
+and it is not attempted here; see the note under rule 1's header.
+
+**Two findings from Phase 118 were recorded WITHOUT a new heading, deliberately, and that is the
+routing this footer should show rather than hide.** The split-immediate reference form was already
+this file's own material, in rule 1's search corollary and cross-referenced from rules 30 and 33, so
+Phase 118's far more expensive instance went in as a second instance of that corollary and not as
+rule 38. The blind-census finding was already worked through in rule 30, so only its previously
+unrecorded half went in, as a remedy under rule 1. **Only the third finding, which removes a class
+rather than detecting one, had nothing in this file to attach to, and it is rule 37.** **The check
+that produced that routing is one grep per candidate, and it is cheaper than the duplicate entry it
+prevents.** Rule 36.
 
 The previous version of this line read "18 cost-entered rules" and attributed the instance
 counts to rules 3, 4 and 8. Both were stale: the rules had been renumbered and the footer had
