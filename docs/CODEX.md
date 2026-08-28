@@ -1658,6 +1658,81 @@ investigation.
 investigated at length that DOES NOT EXIST in this engine, and a name-length ceiling that shaped
 editorial decisions across three phases before it turned out to be removable in one word.**
 
+## 45. A driver that reads rows and ignores the return code will believe a crash
+
+**Every rule above this one is about a measurement. This one is about the HARNESS**, and it entered
+because three separate instrument defects occurred inside one day, 2026-08-27, with **the same
+signature: a confident number produced by an instrument that could not see the thing it was
+counting.** Two of them are already covered by rules 1 and 33. The third is not covered anywhere,
+because it is not a measurement failure at all: **nothing measured anything wrong. The thing that
+read the measurement was wrong about whether a measurement had happened.**
+
+### The three, because the pattern is the entry and not any one of them
+
+| the instrument | the confident number | what it could not see |
+| --- | --- | --- |
+| a reference recognizer with an 8-instruction window | 6,905 sites | the 1,913 whose halves sat further apart |
+| a gate scoring a build | all clear | it scored with a WEAKER recognizer than the build wrote with |
+| a driver capturing a gate suite | 5 gates, 5 pass, 0 FAIL | the suite had crashed after six of the thirty-seven it then ran |
+
+**The middle row is the one that ships a defect.** An enumerator that cannot see a form reports a low
+number and somebody may notice. **A gate that cannot see a form declines to fail, and the build is
+green**, because the gate was handed the same list the writer used. **A gate and the code it gates
+must not share a blind spot, and they do share one whenever they share a helper.** Score the gate
+against a population some OTHER process produced.
+
+### The third row, in full, because it is the cheapest to prevent and the easiest to repeat
+
+A gate suite was run through a driver that captured its output and parsed the result rows. The suite
+prints a Japanese string in gate 7 as that gate's expected value. Captured through a pipe, Python
+chose the locale encoding rather than UTF-8, the print raised `UnicodeEncodeError`, and **the process
+died after six of the thirty-seven gates it then ran, with a return code of 1.** The driver parsed
+the rows it had, found no failures among them, and reported **"5 gates, 5 pass, 0 FAIL".**
+
+**Reproduced deliberately on 2026-08-28 before the fix went in**, which is the step that separates a
+story from a defect: redirecting the suite to a file on a clean tree reproduced it exactly, and the
+redirected file did not even contain the six rows, because the buffer went unflushed when the
+exception unwound. **Captured to a pipe it lies. Redirected to a file it vanishes.**
+
+**THE RETURN CODE WAS 1 THE ENTIRE TIME.** A single line comparing it to zero would have refused the
+run.
+
+> **Rows are evidence about what happened. A return code is evidence about whether it FINISHED.
+> They answer different questions and a driver needs both. Given only rows, a truncated suite and a
+> clean one are the same document.**
+
+**And the negative control went down with it, which is the part that turns an annoyance into a
+false clearance.** The same driver ran a companion disc built with a deliberate defect, whose entire
+job is to FAIL and so prove the suite can fail. It reported zero failures too: it had crashed at the
+same gate, long before reaching the one that would have caught it. **A negative control that cannot
+run is not a negative control, and a harness that cannot tell "did not fail" from "did not run"
+reports the two identically.**
+
+### The rule, in three parts
+
+1. **A driver checks the return code before it reads a single row**, and a non-zero code invalidates
+   the run no matter how clean the rows look. Parse output only after the process is known to have
+   completed.
+2. **A run reports how many gates it EXPECTED, not only how many passed.** `37 / 37` is a
+   measurement; `all pass` is not. This is rule 33 applied to a harness: a fraction names its own
+   denominator and a verdict conceals it.
+3. **Every run includes something that must fail, and the run is void if it did not fail.** The
+   companion is not a nicety. It is the only part of the run that distinguishes a working suite from
+   a suite that is not executing.
+
+### And fix it in the tool, not in the caller
+
+The immediate remedy was to set an environment variable around the driver. **That is the wrong
+layer.** A tool whose correctness depends on its caller configuring the environment has moved its
+own defect one level up, where the next caller will rediscover it. **The suite now sets its own
+output encoding and cannot be killed by its own print.** Rule 31's shape: the weakness was known,
+named in a comment, and worked around rather than removed, for exactly as long as it took to cost
+something.
+
+**Cost: a build reported clean by a suite that had run six of its thirty-eight gates, a companion
+disc that silently stopped being a control, and the discovery that the recognizer two other
+conclusions rested on had been scoring a fraction of its population.**
+
 ---
 
 # Reframing
@@ -1740,9 +1815,9 @@ having only while every entry has a measured before and after.
 
 ---
 
-**37 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
-taken by grepping every "instances" sentence in this file and attributing each to the `## <n>.`
-heading above it: **rule 4 has five**, and **rules 5, 9, 23, 32, 35 and 36 have two each**.
+**45 cost-entered rules, plus the reframing section with 4 worked instances.** Instance counts,
+taken by grepping every ordinal instance marker in this file and attributing each to the `## <n>.`
+heading above it: **rule 4 has five**, and **rules 5, 9, 23, 31, 32, 35 and 36 have two each**.
 Everything else has one. **RULE 1 IS UNCOUNTED**, and that is a state rather than an omission:
 its own header carries the reason, dated 2026-08-27, and no figure for it may be quoted until
 this file says what an instance is. **Rules 23 through 26 are one family**,
@@ -1763,11 +1838,29 @@ a measurement wrong**: every other entry describes an answer that was wrong, mis
 scoped, while 36 describes a correct answer arrived at twice. **Its near neighbor is rule 6's "prior
 documentation is a source of hypotheses, not facts", and it points the opposite way**: 6 governs
 what you may conclude from what you found, 36 governs whether you looked. **37 is the only entry
-here that removes a class instead of detecting one**, and it is deliberately the last: every other
+here that removes a class instead of detecting one**: every other
 rule makes a failure visible, and 37 arranges for the failure not to be available. **It is also the
 only entry whose cost is PROSPECTIVE**, which its body says in as many words rather than borrowing
-the cost of the defect it would have prevented. The count above was taken by counting the `## <n>.` headings in this file, not by
+the cost of the defect it would have prevented. **45 is the only entry that is about a HARNESS
+rather than about a measurement**, and it is the counterpart to 33: 33 governs the form an
+instrument's answer takes, 45 governs whether the thing reading that answer is entitled to believe
+it. The count above was taken by counting the `## <n>.` headings in this file, not by
 adding one to the previous figure.
+
+**CORRECTED IN PLACE, 2026-08-28, AND IT IS THIS FOOTER'S OWN DEFECT A FOURTH TIME.** This line read
+**37 cost-entered rules** while the file held **44** `## <n>.` headings, contiguous from 1. **Seven
+rules had been added without the tally being recounted**, which is the precise failure the closing
+line of this section names, committed by the section that names it. **The heading count is now 45**
+with rule 45 added in the same pass, and it was taken by counting headings, not by adding seven.
+
+**AND THE STATED METHOD WAS ITSELF PART OF THE DEFECT, which is the more transferable half.** The
+instance list said it was taken by "grepping every 'instances' sentence". That grep finds rules 4,
+5, 9, 23, 32 and 35, and it **cannot find rule 31 or rule 36**, both of which mark their second
+instance with a heading in the SINGULAR: `### Second instance`. Rule 36 was nonetheless in the list
+and rule 31 was not, so **the list was neither what the method produced nor what the file contains**,
+which is worse than either. The method is now stated as the ordinal markers, and rule 31 is in the
+list. **A recorded method that does not reproduce the recorded figure is a defect in both**, and
+checking that they agree costs one grep.
 
 **CORRECTED IN PLACE, 2026-08-26, and it is this footer's own defect a third time.** The instance
 line read "rule 5 has two, rule 9 has two. Everything else has one" while **rule 32's own body has

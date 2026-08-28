@@ -1600,6 +1600,42 @@ by **choosing a search depth**, not by padding.
 Padding does not work: appending one byte lands on an odd length, and two or three move the
 overrun from +3 to +6 or +21, which gate 20 rejects.
 
+#### Zero padding is not inert, and this is the sharpest edge in the whole build path
+
+**Read this before writing anything that fills a sector.**
+
+A sub-block that recompresses SMALLER than the bytes it replaces leaves its sector short. The
+obvious repair is to append zero bytes to the largest edited sub-block until the sector is full
+again. **That repair corrupts the block, and it does so silently.**
+
+> **The padding lands inside the compressed stream, so the decompressor READS IT AS FURTHER LZS
+> COMMANDS.** A run of zero bytes is a valid sequence of flag bytes, so the decoder emits real
+> output past the declared length. **MEASURED: two sub-blocks reached +51 and then +108 bytes of
+> overrun this way**, against a shipped-disc maximum of +3.
+
+Nothing about a padded block looks wrong. It is the right length, it is 4-byte aligned, it
+decompresses without raising, and its declared length is untouched. **The only thing that catches it
+is the overrun distribution, gate 20**, which is one of the checks derived from a statistic the
+shipped game exhibits rather than from our own model of the format. Section 16.
+
+**THE REMEDY IS TO ASK FOR A BIGGER ENCODING, NOT TO PAD A SMALL ONE.** The paragraph above is what
+makes that possible: `max_chain` yields 35 distinct output lengths for the same input, all of them
+correct. So rather than compressing to the smallest output and padding the difference, compress with
+a **size floor** and take the smallest admissible encoding **at or above** it. The sector arrives
+full because the encoding fills it, and there is no padding to be misread.
+
+Three constraints on using it, and they are the difference between a remedy and a new defect:
+
+- **A size floor is a remedy for ONE constrained sector, not an encoding policy.** Applied by
+  default it inflates every block on the disc for no reason.
+- **The default path must stay "smallest admissible encoding", as its own branch.** Keeping the
+  floor case separate is what makes "absent a floor, this returns exactly what it returned before"
+  structural rather than an argument.
+- **An unsatisfiable floor must RAISE, never fall back to padding.** Falling back reintroduces the
+  exact defect the floor exists to prevent, at the one moment nobody is watching. Every candidate
+  encoding is still checked for a byte-exact round trip, an unchanged overrun and a length divisible
+  by 4 before the floor is even consulted.
+
 ---
 
 ## 15b. What the corpus does NOT contain
