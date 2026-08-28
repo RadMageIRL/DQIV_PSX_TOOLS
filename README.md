@@ -200,6 +200,21 @@ for sector, sub in hbd.text_sub_blocks(blocks):
     print(hex(tb.id), huffman.render(expanded)[:80])
 ```
 
+## Additional Screenshots
+
+<img width="1609" height="1337" alt="2026-08-28 10_06_12-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/93838188-25b3-46ea-a32b-b31cebd225cd" />
+
+<img width="1609" height="1337" alt="2026-08-28 10_05_47-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/cc5301d9-0007-452b-ab6a-ec9150b02dbd" />
+
+<img width="1609" height="1337" alt="2026-08-28 10_03_37-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/40fa00b0-6973-41e0-b293-d44ab7650bbc" />
+
+<img width="1609" height="1337" alt="2026-08-28 09_59_22-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/e1dcafca-3a62-4a10-af2c-38e2d113e26d" />
+
+<img width="1609" height="1337" alt="2026-08-28 09_59_31-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/fd1a1cda-e38c-4375-ad5c-ec89645533f8" />
+
+<img width="1609" height="1337" alt="2026-08-28 10_00_27-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/33624146-fc43-4ab9-a1a2-5f970850e609" />
+
+
 ## Credit
 
 This is built on **Markus Schroeder's** documentation at markus-projects.net and on
