@@ -68,14 +68,38 @@ STRING_10 = "どうした？　<7F1F>。<7F02>もう　降参かい？"
 
 
 def _carriers_of(arch, exe, tid):
-    """Every carrier holding text block `tid`, in BOTH media, as (where, bytes).
+    """([(where, bytes)], unexaminable) for text block `tid`, in BOTH media.
 
     Written for gate 44. The point is coverage, not speed: it walks every
     sub-block of every type rather than the four types a census happened to
     enumerate, because the defect this gate exists to catch is precisely a
     carrier nobody thought to look in.
+
+    THE SECOND RETURN VALUE IS THE WHOLE REASON THIS SIGNATURE IS NOT JUST A
+    LIST. A sub-block that will not decompress, or that the overlay scanner
+    cannot read, is not evidence that the id is absent from it. It is a carrier
+    THIS FUNCTION DID NOT LOOK IN, which is the exact thing gate 44 exists to
+    make impossible, so it is counted and handed back rather than skipped.
+
+    A coverage gate that silently drops the carriers it could not read reports
+    N/N over a denominator it quietly shrank, and N/N is the answer it gives
+    when everything is fine. `referrers.py` carries the same warning from the
+    other end: a swallowed exception is how 922 of 976 type 39 blocks went
+    unexamined for three phases.
+
+    MEASURED on the pristine disc, 2026-08-28: 23,828 sub-blocks, 5,821 of them
+    LZS, and `unexaminable` is ZERO. So this is a latent defect being closed,
+    not an active undercount being corrected, and the figure the gate prints
+    today does not move. A BUILT disc is where it would bite, and a built disc
+    is the only thing gate 44 is ever pointed at.
+
+    The handlers stay broad rather than being narrowed to particular exception
+    types, because no failure has been observed here and narrowing to a guessed
+    list would convert an unexpected error into a crash rather than into a
+    count. Broad and COUNTED is the safe combination; broad and SILENT is not.
     """
     out = []
+    unexaminable = 0
     if exe:
         load, _pc, tsize, toff = mips.exe_mapping(exe)
         for _va, tb in referrers.exe_blocks(exe, load, toff, tsize):
@@ -88,16 +112,18 @@ def _carriers_of(arch, exe, tid):
             try:
                 raw = lzs.decompress(raw)
             except Exception:
+                unexaminable += 1
                 continue
         try:
             found = overlay.scan_image(raw)
         except Exception:
+            unexaminable += 1
             continue
         for off, tb in found:
             if tb.id == tid:
                 out.append(("%d/%d t%d+%06X" % (sec, sb["idx"], sb["type"], off),
                             raw[off:off + tb.a]))
-    return out
+    return out, unexaminable
 
 
 class Report:
@@ -997,8 +1023,10 @@ def main():
             if tok:
                 want_ids.append(int(tok, 16))
         rows44 = []
+        blind44 = 0
         for tid in want_ids:
-            copies = _carriers_of(arch, exe, tid)
+            copies, blind = _carriers_of(arch, exe, tid)
+            blind44 = max(blind44, blind)
             if not copies:
                 rows44.append((tid, 0, 0, "id not located in any carrier"))
                 continue
@@ -1014,11 +1042,17 @@ def main():
                            "%d distinct payloads; smallest group: %s"
                            % (len(groups),
                               ", ".join(sorted(min(groups.values(), key=len))[:4]))))
-        ok44 = all(n == m for _, n, m, _ in rows44) and bool(rows44)
+        # blind44 is part of the VERDICT, not a footnote. A carrier this scan
+        # could not read is a carrier it did not check, and N/N over a shrunken
+        # denominator is the same string N/N over the true one produces.
+        ok44 = (all(n == m for _, n, m, _ in rows44) and bool(rows44)
+                and blind44 == 0)
         detail = "; ".join("%04X %d/%d%s" % (t, n, m, (" " + w) if w else "")
                            for t, n, m, w in rows44)
+        detail += "; %d unexaminable sub-blocks" % blind44
         rep.gate(44, "carrier coverage, every carrier of every edited id", ok44,
-                 detail, "N/N on every declared id, both media")
+                 detail,
+                 "N/N on every declared id, both media, 0 unexaminable")
     else:
         rep.note(44, "carrier coverage",
                  "SKIPPED, no --edited-ids. A build that does not declare what "
