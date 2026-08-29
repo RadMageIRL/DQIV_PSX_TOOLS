@@ -18,7 +18,7 @@ pixel, and bit 0 of the descriptor selects which plane is visible by choosing a
 CLUT. Reading a cell as a single 4bpp image superimposes both glyphs; that error
 survived three phases and is why cell_plane() exists.
 
-Format details are in FORMAT.md section 15.
+Format details are in docs/FONTS.md.
 """
 
 import collections
@@ -108,3 +108,17 @@ def cell_plane(descriptor):
 def uv(cell, cols=32, cell_w=8, cell_h=14):
     """(U, V) for an atlas cell, as the renderer computes them."""
     return (cell % cols) * cell_w, (cell // cols) * cell_h
+
+def missing(img, load, base, wanted):
+    """Codes in `wanted` that have NO entry in the font table at `base`.
+
+    A miss is SILENT at runtime: the lookup walks the bucket chain, finds no
+    matching code, and draws nothing. Nothing on screen distinguishes a missing
+    glyph from a space, which is why this is asserted rather than eyeballed.
+
+    MENU text draws through FONT1 and DIALOGUE through FONT2 (Phase 59), and the
+    two tables are NOT the same set: 435 codes are in both, 98 in font 1 only and
+    86 in font 2 only. A string checked against the wrong table is not checked.
+    """
+    have = set(table(img, load, base))
+    return sorted(c for c in wanted if c not in have)

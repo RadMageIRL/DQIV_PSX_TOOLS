@@ -16,6 +16,25 @@ SYSTEM.CNF
 corpus/
 dumps/
 
+# Working material from the translation side, which is a SEPARATE and PRIVATE
+# repository. None of it may ever land here. Listed by the shapes that workflow
+# actually produces rather than by category, because a category is easy to argue
+# with at the moment of a `git add .`:
+#   pickled reference populations and site tables
+#   side-by-side and extract listings, which are decoded script
+#   authored English, glossaries, voice sheets, editorial notes
+#   emulator save states and RAM captures
+*.pkl
+*.pickle
+*.sav
+*.srm
+*.state
+scratch/
+editorial/
+*-side-by-side.*
+*-extract.*
+MANIFEST.sha256
+
 # Python
 __pycache__/
 *.py[cod]
@@ -29,9 +48,14 @@ venv/
 Thumbs.db
 build/
 
-# docs/ is ignored wholesale except the published screenshots, which are the only
-# binary assets this repo carries and are checked into docs/images/.
+# docs/ is ignored wholesale. Three deliberate exceptions and no others:
+#   docs/images/*.png  the published screenshots, the only binary assets here
+#   docs/CODEX.md      the method rules, referenced by README.md and FORMAT.md
+#   docs/FONTS.md      fonts and text rendering, referenced by FORMAT.md
+# Phase reports are NOT published from this repo and must not be added here.
 docs/*
 !docs/images/
 docs/images/*
 !docs/images/*.png
+!docs/CODEX.md
+!docs/FONTS.md

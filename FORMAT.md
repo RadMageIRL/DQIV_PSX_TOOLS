@@ -83,14 +83,42 @@ sector format begins there (section 8). MEASURED, Phase 0; the heap scan is gate
 |---:|---:|---|
 | 0 | u32 | data length |
 | 4 | u32 | uncompressed length |
-| 8 | u32 | RAM load address, or zero |
+| 8 | u32 | destination, or zero; the meaning depends on type, see below |
 | 12 | u16 | flags |
 | 14 | u16 | type |
 
-The field at +8 was carried as unknown until Phase 28. It is a **destination address in main
-RAM**: 21 distinct values, all in the 0x8001xxxx to 0x801Exxxx range, nonzero on **965 of
-23,828** sub-blocks and zero on the rest. It never equals either length field. Sub-block types
-that load to a fixed address record it here; everything else carries zero. MEASURED.
+### CORRECTED, Phase 45: the field at +8 is polymorphic
+
+Phase 28 recorded this field as follows, and the claim is kept here in full because part of it is
+still right:
+
+> The field at +8 was carried as unknown until Phase 28. It is a **destination address in main
+> RAM**: 21 distinct values, all in the 0x8001xxxx to 0x801Exxxx range, nonzero on **965 of
+> 23,828** sub-blocks and zero on the rest.
+
+**The count is 20 distinct values, not 21, and they are not all RAM addresses.** MEASURED across
+all 23,828 sub-blocks:
+
+| reading | values | which |
+| --- | --- | --- |
+| **main RAM address** | 11 | all in `0x80011F08` to `0x80210000`, types 44, 45, 46, 47 |
+| **too small to be an address** | 7 | the values 1 to 7, every one of them type 32 |
+| **neither** | 2 | `0x04000380` on the three atlases and `0x01034380` on the three CLUTs, both type 1 |
+
+So the field is a destination whose **interpretation depends on the sub-block type**, and reading
+it as a RAM address unconditionally is what hid the type 1 case.
+
+**On the two type 1 values, INFERRED and not measured.** Under the usual PlayStation packing of
+`(y << 10) | x`, `0x04000380` gives x = 896, y = 0 and `0x01034380` gives x = 896, y = 208. The
+atlas is 256 pixels wide at 4bpp, which is 64 VRAM halfwords, and its 16,128 bytes are 8,064
+halfwords, which is exactly 64 by 126, its own row count. The CLUT block's 512 halfwords are
+exactly 16 by 32. Both land at x = 896, and the font 2 glyph cache observed at `0x800874A0` uploads
+to x = 896 + (s1 >> 2), y = 154 + s6, between them.
+
+**The companion for that reading fails and the reading is therefore not established.** Under the
+same packing the genuine RAM addresses also decode to plausible coordinates, `0x80011F08` giving
+(776, 71). The packing alone discriminates nothing; only the value range does. No code that
+consumes the field for a type 1 sub-block has been read.
 
 **Alignment.** Sub-block start offsets are not stored anywhere; they are implied by accumulating
 `dlen` from the sub-block table, and condition 4 of the validity filter requires the lengths to
@@ -338,8 +366,8 @@ is a strict subset: every one of her codes occurs. MEASURED, gate 16.
 | Code | Meaning | | Code | Meaning |
 |---|---|---|---|---|
 | 0x0000 | end of string, required terminator | | 0x7F2A | フレア |
-| 0x7F02 | new line plus tab | | 0x7F2B | ホイミン |
-| 0x7F04 | name decorator, starts named dialog | | 0x7F2C | オーリン |
+| 0x7F02 | new line; see below | | 0x7F2B | ホイミン |
+| 0x7F04 | name decorator, starts named dialog; see 15c | | 0x7F2C | オーリン |
 | 0x7F0A | blinking cursor | | 0x7F2D | ホフマン, not always |
 | 0x7F0B | end of line, opposite of 0x7F0A | | 0x7F2E | パノン |
 | 0x7F0C | end of line, in groups of about six | | 0x7F2F | ルーシア |
@@ -363,6 +391,49 @@ All fifteen name codes 0x7F20 through 0x7F2F are supported by decoded context, w
 disagreements. Two of the sharpest confirmations: `<7F04><7F29>「やや　戦士どの！<7F02>私です。アレクス`
 places the literal name immediately after the code, and `<7F04><7F24>は　<7F15>Ｇを　手に入れた！`
 independently confirms 0x7F15 as received gold. MEASURED, Phase 3.
+
+### 0x7F01 and 0x7F02, the two new lines
+
+**0x7F01 was absent from both tables above.** It is a plain new line, and it is
+what the executable's own text block uses.
+
+Read from the decoder rather than inferred from position. The handler at
+`0x80088A48`:
+
+```
+lw    v1, [0x800FFA40]     ; pen y
+lw    a0, [0x800E95B0]     ; line height
+addiu v0, zero, 8
+sw    v0, -1476(s3)        ; pen x = 8
+addu  v1, v1, a0           ; y = y + line height
+sw    v1, [0x800FFA40]
+```
+
+**The pen resets to x = 8, not 0.** That is the 8-unit left inset a window
+carries on each side, and it is worth noting because the same number can be
+reached from window arithmetic alone; here it is visible directly in the code.
+
+**CORRECTED: 0x7F02 is not "new line plus tab".** The width routine at
+`0x800886D8` tests a RANGE, `0xFF01 <= code <= 0xFF02`, and treats both
+identically: same reset to x = 8, same advance by one line height. Nothing in
+either path adds a tab or a different indent. `0xFF02` is compared exactly once
+in the whole executable, in that range test, so the executable's own dispatch
+never special-cases it.
+
+**The two differ by which renderer consumes the string, not by what they mean.**
+Measured across the whole disc:
+
+| where the string lives | 0x7F01 | 0x7F02 |
+|---|---:|---:|
+| archive scene blocks, 1,528 of them | **0** | **166,134** |
+| the executable's UI block | **144** | 1 |
+
+So scene dialogue uses one and the interface uses the other, essentially without
+exception. An authored string should follow the convention of the block it is
+going into; both will break a line.
+
+**0x7F0A remains as the table above states.** Its handler was not read, and the
+"blinking cursor" reading is not contradicted by anything measured here.
 
 ### The six additional codes
 
@@ -388,8 +459,43 @@ Located in `SLPM_869.16`. One little-endian u32 per level.
 
 | Field | Bits | Meaning |
 |---|---|---|
-| length | `v >> 20` | 12 bits, in sectors |
+| length | `(v >> 20) & 0x7FF` | **11 bits**, in sectors. **Max expressible `nsec` is 2047** |
+| flag | `v >> 31` | **1 bit. PRESERVE IT; it is not part of the length** |
 | lba | `v & 0xFFFFF` | 20 bits, **absolute disc LBA** |
+
+> **CORRECTED IN PLACE, 2026-08-27, AND NO FIGURE BELOW CHANGES.** This table read
+> `length = v >> 20`, 12 bits, with no flag row. **MEASURED Phase 113, from the reader at
+> `0x800592CC`, which does `srl 20` then `andi 0x07FF`: the length field is ELEVEN bits and bit 31
+> is a separate flag.** Every count in this section was taken over well-formed shipped entries,
+> where bit 31 is clear and the two decodes agree, **so nothing measured under the old form is
+> retracted.** What the old form would break is a WRITE: **an entry rebuilt as `length << 20 | lba`
+> drops bit 31**, and Phase 113 lists that among the corrections that would have corrupted a build.
+
+### Relocation: what rewriting one of these entries is proven to do
+
+**A block is relocated by rewriting its table entry. Four bytes. That is the whole mechanism**, and
+`docs/CODEX.md` is not where this belongs because it is a format fact.
+
+> **THE LABEL, and it is to be carried in these words: the loader honors a changed `lba` --
+> MEASURED, for the blocks tested, with a failing companion. That EVERY entry does -- INFERRED from
+> format uniformity.**
+
+**MEASURED on hardware:** one block relocated with its entry updated plays; the same block with the
+entry left stale hangs at the chapter card; a 16-copy group with all 16 entries updated plays; the
+same group with one entry stale plays normally, **predicted in advance**; and 23 blocks relocated on
+a real build with the table invariant at 3,241 and zero unmapped entries.
+
+**INFERRED: that all 3,241 entries behave identically.** Four blocks and one group were exercised.
+
+**AND THE WARNING THAT COMES OUT OF THE SAME PILOT: BOOTING CANNOT DETECT A PARTIAL RELOCATION.**
+Fifteen good copies mask one bad one, and **71 of 72 byte-identical block groups hold no drawable
+text at all**, so for those a missed copy is invisible to any amount of play testing. **The defense
+is the build-time invariant over the whole table, not a play test.**
+
+**Two further consequences for anyone writing an entry**, both MEASURED Phase 113: **`nsec` is
+stored TWICE**, in the table entry and in the block header at `+4`, and both move for every copy;
+and **the table holds 3,281 usable entries, not 3,283** -- the last two words are overlay load
+addresses and writing them corrupts the build.
 
 | Property | Value |
 |---|---|
@@ -427,77 +533,46 @@ over the table's contiguous strictly-valid runs rather than over its full extent
 entries sit in the last stretch, past the end of the second run. The three blocks in question
 hold the glyph atlas, so the atlas **is** loaded by the game.
 
+### 7b. Slack belongs to the SECTOR, not to the sub-block
+
+MEASURED on sector 34871. This dissolved a blocker that had stood since Phase 108, and the
+reasoning generalizes further than the one sector does, so it is recorded rather than the
+outcome alone.
+
+> **A tight sub-block with a compressible neighbor is not a tight sector.**
+
+A sector holds several sub-blocks and the cap applies to their TOTAL. Reading slack per
+sub-block therefore reports a blocker that may not exist:
+
+| | measured | read per sub-block | read per sector |
+| --- | --- | --- | --- |
+| sub 15, the carrier being edited | **+8** against **4 bytes** of slack | **BLOCKED**, and no `max_chain` rescues it | still +8, and it does not matter |
+| sub 3, an untouched neighbor | repacks losslessly at **-108** | irrelevant, nobody is editing it | **pays for sub 15 nine times over** |
+| the sector | **325,240** against a cap of **325,344** | | **FITS** |
+
+The +8 is real and a wider chain depth does not remove it. What removes the blocker is
+recompressing a neighbor that had no reason to be touched.
+
+**THE CONSTRAINT, and it is why this is not a general license.** It requires a neighbor that
+repacks **losslessly**, and that must be **verified per sector rather than assumed**. Not every
+neighbor has room and some make it worse: in this same sector **sub 4 would overflow it at
++464**, and nothing required touching sub 4. A neighbor is a lever only after its own identity
+repack has been measured.
+
+So before declaring a sector blocked: sum the sector, not the sub-block, and check whether any
+untouched neighbor repacks smaller. INFERRED from per-sub-block measurement; not built.
+
 ---
 
 ## 8. Glyph atlas
 
-The type 1 sub-blocks hold a 4bpp atlas. Six sub-blocks, two distinct contents, three copies
-each.
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
 
-| Property | Value |
-|---|---|
-| pixel format | 4bpp, **low nibble first** |
-| width | 256 pixels |
-| cell | **8 wide by 14 tall**, origin (0, 0) |
-| DQ4 atlas size | 16,128 bytes, 126 rows, 9 bands |
-| slots | **288**, of which **268** are non-blank |
-| Latin capitals | **13**, at slots 26 through 38 |
+The atlas is a 4bpp image carried in the archive's type 1 sub-blocks. Its geometry, cell
+layout, the two-glyphs-per-cell packing and the contents inventory are in `docs/FONTS.md`.
 
-MEASURED, gate 17.
-
-Geometry was derived, not assumed. Byte-equality autocorrelation peaks at a stride of 128
-bytes, which is 256 pixels at 4bpp. Column ink minima land on `x mod 8 == 0` far more often
-than on any other residue, 29 times against 13 for the next best. Rendering high nibble first
-breaks every vertical stroke into a dotted line. MEASURED, Phase 3b.
-
-### The drop shadow is inside the cell
-
-The rightmost column and the bottom row of each cell carry the glyph's drop shadow, not the
-letterform. Column 0 is empty on eleven of the thirteen capitals. MEASURED, Phase 3b.
-
-For width calculations: cell advance is 8 pixels, the letterform body occupies columns 1
-through 6, **effective body width is 6 of 8**, or 7 of 8 if the shadow is counted.
-
-### What the atlas contains
-
-> **CORRECTED, Phase 22.** This section previously read:
->
-> > "The 13 Latin capitals present are Z, X, V, T, R, P, N, L, J, H, F, D and B, in a strictly
-> > ordered run at slots 26 through 38. The other 13 capitals, all lowercase and all digits are
-> > absent from this atlas."
->
-> That is wrong, and so is everything built on it. See section 11's retraction.
-
-**Every cell holds two glyphs, one in each 2-bit plane of the 4bpp pixel.** Bit 0 of a
-character's font descriptor selects which is visible, by choosing a CLUT. Reading a cell as a
-single 4bpp image superimposes both, which is exactly what produced the "13 capitals" reading:
-the alternating, descending run was the even and odd planes of consecutive cells.
-
-**The atlas carries all 26 Latin capitals, all 26 lowercase and all 10 digits.** MEASURED, by
-reconstructing the game's own font table from executable bytes and rendering each glyph from
-the cell and plane its entry names. Gate 17 asserts 62 of 62.
-
-```
-Ａ 39.0  Ｂ 38.1  Ｃ 38.0  Ｄ 37.1  Ｅ 37.0  ...  Ｚ 26.1      (cell.plane)
-ａ 26.0  ｂ 25.1  ｃ 25.0  ｄ 24.1  ｅ 24.0  ...  ｚ 13.1
-０ 44.0  １ 43.1  ２ 43.0  ３ 42.1  ...            ９ 39.1
-```
-
-288 cells, 268 non-blank, so up to 536 glyph slots; the font 1 table names 533 of them. The two
-blank cells, 6 and 7, are named by no code, and their four descriptors are among the six the
-table never uses. The table's unused half-cells and the image's blank cells are the same cells,
-measured by two independent routes.
-
-The 65 to 90 percent per-cell ink in the lower bands, once flagged as suspicious for a glyph
-sheet, is simply two glyphs superimposed.
-
-**Kanji.** The earlier "129 kanji at 8 x 14" was counted on the superposition and is not
-reliable. What is measured is that **18 of the leaves in text id 0x006C's own script have no
-font 1 entry at all**, and 14 of those are supplied by that block's own embedded font 2 table
-(section 15). This atlas was never the only kanji source.
-
-The remaining slot classifications, kana against symbols, are still by ink density and height
-**proxy**: INFERRED.
+What belongs in this section is the one type 1 finding that is not about fonts.
 
 ### The 60 01 01 80 band
 
@@ -727,7 +802,7 @@ to look. What it said:
 > | **best cross-atlas match found, searching every pixel offset** | **82** |
 >
 > Every cross-atlas best match falls below the 91 same-font ceiling, and every one lands on a
-> **shape neighbour**: B matches C, P matches O, N matches M, R matches Q. That is the signature
+> **shape neighbor**: B matches C, P matches O, N matches M, R matches Q. That is the signature
 > of absence, not of a font revision.
 >
 > A second hypothesis, that the run turns around and the missing letters follow, was tested by
@@ -752,7 +827,7 @@ inside a wrong decoding can detect that. Worse, the calibration made the result 
 a self-112 / ceiling-91 / best-82 spread looks like exactly the kind of evidence that should
 settle a question.
 
-The shape-neighbour pattern that read as "the signature of absence" was the real tell and was
+The shape-neighbor pattern that read as "the signature of absence" was the real tell and was
 misread. B scoring against C, P against O, N against M, R against Q is what you get when each
 cell contains **both** letters of an adjacent pair: B and C share cell 38, and the superposition
 resembles either one. That pattern was evidence of superposition and was interpreted as
@@ -1071,6 +1146,43 @@ dictionary is 34,680.
 **Consequence: offsets must move, so referrer completeness is required.** Preserving encoded
 length is not an available strategy.
 
+### 11c. The alphabet cost model, as an equation
+
+MEASURED on `0x0485`, both relations exact. This is the size rule stated arithmetically rather
+than as a caution, and it is what forces a tight block's dictionary to be emptied.
+
+A block's header carries the payload start `d` and the block end `a`. For a tree over `L`
+distinct symbols:
+
+```
+npairs = 2L - 1                  a Huffman tree over L leaves has 2L - 1 nodes
+d      = e + 10 + 2*npairs       so d grows by 4 for every distinct symbol added
+```
+
+**`d` CANNOT SIMPLY MOVE.** The records in `[d, a)` hold **block-relative offsets**, so shifting
+`d` invalidates every one of them. `e` is therefore not free either: it is pinned by the same
+constraint from the other side. What absorbs the change is the code stream, and the general form
+is:
+
+```
+code stream bytes = (a - d) - c        with d = e + 10 + 2*(2L - 1)
+                  = (a - e - 10 - 2*(2L - 1)) - c
+```
+
+so, holding `e` and `a` fixed and letting `L` vary:
+
+> **EVERY DISTINCT SYMBOL COSTS FOUR BYTES OF CODE STREAM**, before it has encoded a single
+> character.
+
+`4L` is the rule and it is general. Any constant that appears when this is written out for one
+block (an `848` for `0x0485`, where `a = 1048` and `d = 856`) is that block's `a` and `e`
+arithmetic and does not transfer.
+
+**The consequence for authoring is the whole of it.** A shorter line built from rarer characters
+is bigger than a longer line built from characters the block already carries, because the rare
+character pays 4 bytes of tree before it pays anything for itself. Reduce the ALPHABET before
+shortening the text, and empty a phrase dictionary before trimming prose.
+
 ## 12. The tail record table and the lookup routine
 
 MEASURED, Phase 10. 855 of 1,528 text sub-blocks carry a tail table. Deduplicated by text id
@@ -1178,6 +1290,65 @@ Each of the 9,371 records names exactly one string, and no string is named twice
 non-empty strings have no referrer from this or any other measured system. The largest
 unreferenced concentrations are text ids 0x0021 (1,086), 0x0023 (576), 0x0020 (382), 0x0024
 (147) and 0x0124 (109).
+
+---
+
+## 12b. The per-block font records, and reclamation
+
+MEASURED, Phase 51. The region `[d, a)` of a text sub-block holds a font record and the table it
+names. 1,337 of the 1,528 text sub-blocks have one; 191 have `d == 0` and none at all.
+
+### Layout, identical in DQ4 and in DW7's Japanese and English builds
+
+| Offset from `d` | Size | Field | Measured |
+|---|---|---|---|
+| `+0` | 4 | record count | 1 in 1,337 of 1,337 |
+| `+4` | 4 | buckets, **block-relative** | `d + 28` in 1,337 of 1,337 |
+| `+8` | 4 | glyphs, **block-relative** | `buckets + 2 * modulus` |
+| `+12` | 2 | modulus | 8 distinct values, `{2: 1001, 23: 79, 31: 68, 3: 59, 5: 58, 11: 42, ...}` |
+| `+14` | 2 | font id | **2 in 1,337 of 1,337.** No archive block registers font 1 |
+| `+16` | 2 | | 2 |
+| `+18` | 2 | entry count | 108 distinct values |
+| `+20`, `+22` | 2, 2 | | 16, 16 |
+| `+24`, `+26` | 2, 2 | cell_w, cell_h | **0 and 0 in 1,337 of 1,337**, which selects the 8-byte chain stride |
+| `+28` | `2 * modulus` | the bucket array, self-relative halfword heads | |
+| then | | chains at stride 8, then the glyph bitmaps, up to `a` | |
+
+The two block-relative offsets are why this region is fragile: **they are measured from the block
+base, so anything that moves `d` must move them too.**
+
+### The lookup, read to its `jr $ra`
+
+`0x8008F7B0`. Twelve registration slots of 32 bytes at `0x80100168`; per slot, `+0` is the block
+base, `+4` the record array and `+20` the record count. For each record it compares `+10` against
+the requested font id, divides the character code by the modulus at `+8`, doubles the remainder and
+indexes the bucket array at `base + [record+0]`. **A zero bucket halfword is a miss**, taken without
+dereferencing anything; a zero code halfword inside a chain ends it the same way. On total failure
+the routine returns 0.
+
+### Reclamation
+
+Reducing the region to a stub is what Heart Beat did on the English build of DW7: **all 877 of its
+English text blocks carry a records region of exactly 36 bytes, one distinct size.** The 36 is
+`32 + 2 * modulus` with the modulus at 2, so:
+
+* the 24-byte record header survives,
+* the two block-relative offsets move with `d`,
+* the entry count at `+18` goes to 0, so the u32 at `+16` reads 2,
+* **the bucket array is present and zeroed, not removed**, and
+* the glyph area is emptied to 4 bytes.
+
+**The modulus must never be zeroed.** `divu` by it is executed unconditionally and guarded by an
+explicit `break 0x1C00` two instructions later, so a zero modulus traps rather than missing.
+**DW7 forces the modulus to 2 on all 877 blocks, including the 22 where the Japanese carried 3 or
+5**, which is a measured precedent for changing it and is what makes the size fixed rather than
+proportional.
+
+Reclaiming removes the block's own glyphs permanently, so **a reclaimed block cannot be left partly
+Japanese.** DQ4's 0x0186 uses 100 codes with no entry in the global font 1 table; its English needs
+none of them.
+
+Reproduced on DQ4 and proven on hardware, Phase 51.
 
 ---
 
@@ -1411,133 +1582,13 @@ yet found, and three such systems have now been found the same way, by locating 
 
 ## 15. Rendering
 
-How a character code becomes pixels. None of this was documented before Phase 21; the sections
-above describe the atlas image, this one describes the path that reads it.
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
 
-### 15.1 Two fonts, selected by a mode byte
+Both font tables, the chained hash lookup, descriptors, the atlas path, the run length
+payload, the per-block font supplement and the leaf space wall are in `docs/FONTS.md`.
 
-| | font 1 | font 2 |
-|---|---|---|
-| registered from | `0x800B2A3C` | `0x800B3600` |
-| font record | `0x800B2A58` | `0x800B361C` |
-| hash modulus | 137 | 29 |
-| entries | **533** | **521** |
-| chain stride | 4, code at +2 | 8, code at +4 |
-| cell | fixed **8 x 14** | per glyph, up to 16 x 16 |
-| pixels | resident 4bpp atlas, two glyphs per cell | 2bpp run length, expanded per character |
-| advance | fixed 8 | per glyph, from the entry |
-
-Both are keyed by **fullwidth Shift-JIS codes** and neither contains any code below 0x8000.
-Font 2 covers the same code space as font 1, including all 52 Latin letters, with proportional
-widths: capitals mean 9.3 px, lowercase 7.4, digits 7.7, kanji 11.9.
-
-**Font selection is a caller-set mode, not a property of the character.** At `0x8002D620` the
-drawing routine loads a byte from the text state at `+131` and compares it against 1 and 2:
-
-```
-0x8002D620  lbu a0,131(s0)
-0x8002D638  beq a0,s3,0x8002D650      ; s3 = 1 -> font 1
-0x8002D640  beq a0,fp,0x8002D6E4      ; fp = 2 -> font 2
-```
-
-The same character code goes to whichever font is active.
-
-### 15.2 The lookup
-
-`0x8008F7B0`, a chained hash. `bucket = code % modulus` via `divu` and `mfhi`; the bucket
-halfword is a **self relative** offset to a chain; a zero code terminates the chain. Two chain
-layouts, selected by whether the record's cell width and height at +20 and +22 are both nonzero.
-
-**The walk is bounded on every axis**: 12 slots, `slot+20` records per slot, and a zero-code
-terminator per chain. A code with no entry returns 0, the caller returns -1, nothing is drawn
-and the pen does not advance. There is one unbounded hazard, `break 0x1C00` at `0x8008F830` on
-a zero modulus.
-
-That bounding only holds while the chain data is well formed. A bucket array pointing at
-arbitrary bytes walks arbitrary memory; see 15.5.
-
-`dq4/fonts.py` reconstructs either table from executable bytes.
-
-### 15.3 Descriptor to texture coordinates
-
-For font 1 the descriptor is a dense index over glyphs:
-
-```
-cell  = descriptor >> 1
-plane = descriptor & 1        selects the CLUT, which selects which glyph is visible
-U     = (cell % 32) * 8
-V     = (cell / 32) * 14
-```
-
-MEASURED at `0x80087364` to `0x800873BC`. This **independently confirms the atlas geometry** in
-section 8, which had been derived from the image alone: 32 columns of 8 pixels, 14-pixel rows.
-
-One character emits one 20-byte GPU packet: command 0x65, textured rectangle, W 8, H 14, with
-the CLUT id at +14 taken from a table at `0x800E7810`.
-
-### 15.4 Advance
-
-Both fonts share one instruction, `addu a0,a0,s5` at `0x800876B8`. Only the source of `s5`
-differs: font 1 hardcodes `addiu s5,zero,8` at `0x800872E8`, file offset 0x06FBE8; font 2 reads
-`lbu s5,6(a1)` from the chain entry. So variable advance is already supported by the renderer
-and font 1 simply does not use it. Note that `s5` is also the primitive width register, so
-changing the immediate would clip the sampled rectangle, not merely tighten spacing.
-
-### 15.5 The embedded per-block font table
-
-**Every map text block carries its own font 2 supplement.** This is the structure section 10
-carried for a long time as "the per-kanji record table at `d + 32`".
-
-`register_block` at `0x8008F178` registers text blocks with the same header shape as font
-blocks, so `block+12`, which is `d` for a text block, becomes the record count and record array
-pointer. The block record at `d + 4` is a real font record with font id 2.
-
-| field | for text id 0x006C |
-|---|---|
-| record at `d + 4` | `+0` bucket array offset **984**, `+4` glyph payload offset **1124**, modulus 2, font id 2 |
-| bucket array | `block + 984` |
-| chain entries | `block + 988`, which is `d + 32`, 15 entries of 8 bytes |
-| entry layout | u32 descriptor, u16 code at +4, u8 width at +6, u8 height at +7 |
-
-0x006C supplies 15 kanji at 12 x 13 and 11 x 8, and **14 of the 18 leaves in its own script have
-no font 1 entry**, so the scene cannot draw its own dialogue without this table.
-
-**The `+0` and `+4` fields are offsets from the block base.** Anything that moves `d` must move
-them with it. Copying the region verbatim while `d` moves points the bucket array at whatever
-now occupies that offset; in one build it landed inside the tree pair array and the chain walked
-to offset 33,821 in an 1,804-byte block. MEASURED, Phase 26.
-
-### 15.6 The leaf space wall
-
-Relevant to anyone attempting English. `0x8008F3BC` returns a character, and its Huffman path
-ends with:
-
-```
-0x8008F594  beq s1,zero,0x8008F5A0      ; END skips the ori
-0x8008F59C  ori s1,s1,0x8000            ; file offset 0x077E9C
-```
-
-**Every non-zero leaf has bit 15 set unconditionally**, so the Huffman path can return only
-0x8000 to 0xFFFF plus 0x0000 for END. A stored leaf of 0x0041 comes back as 0x8041.
-**Halfwidth ASCII is unreachable from compressed text**, and that single `ori` is the wall any
-workaround has to route around.
-
-Of that space, 0xFE01 to 0xFEFF is consumed by the phrase dictionary (section 5) and 0xFF00 to
-0xFFFF by control codes (section 6).
-
-The engine **does** have a single-byte path. When the state word is negative, `0x8008F3BC` reads
-raw Shift-JIS and classifies lead bytes at `0x8008F3F0` to `0x8008F414`, returning a single byte
-of 0x00 to 0xFE from `0x8008F4E8`. It is not reachable from compressed text, and since neither
-font table contains any code below 0x8000, such a value would miss both fonts and draw nothing.
-
-### 15.7 Line metrics
-
-**Font 1 renders every character in 8 pixels**, kanji included. "Fullwidth" names a region of
-the Shift-JIS **code** space, not a rendered width. Worth stating plainly, because assuming
-otherwise cost this project three phases of misdirected work.
-
-The longest line the game draws anywhere in its own script is **24 characters**; the 99th
-percentile is 18. MEASURED over 67,020 lines. At 8 pixels that is 192 of the 320 available.
+What remains here is the one subsection that is about compression rather than rendering.
 
 ### 15.8 Recompression and alignment
 
@@ -1548,6 +1599,42 @@ by **choosing a search depth**, not by padding.
 
 Padding does not work: appending one byte lands on an odd length, and two or three move the
 overrun from +3 to +6 or +21, which gate 20 rejects.
+
+#### Zero padding is not inert, and this is the sharpest edge in the whole build path
+
+**Read this before writing anything that fills a sector.**
+
+A sub-block that recompresses SMALLER than the bytes it replaces leaves its sector short. The
+obvious repair is to append zero bytes to the largest edited sub-block until the sector is full
+again. **That repair corrupts the block, and it does so silently.**
+
+> **The padding lands inside the compressed stream, so the decompressor READS IT AS FURTHER LZS
+> COMMANDS.** A run of zero bytes is a valid sequence of flag bytes, so the decoder emits real
+> output past the declared length. **MEASURED: two sub-blocks reached +51 and then +108 bytes of
+> overrun this way**, against a shipped-disc maximum of +3.
+
+Nothing about a padded block looks wrong. It is the right length, it is 4-byte aligned, it
+decompresses without raising, and its declared length is untouched. **The only thing that catches it
+is the overrun distribution, gate 20**, which is one of the checks derived from a statistic the
+shipped game exhibits rather than from our own model of the format. Section 16.
+
+**THE REMEDY IS TO ASK FOR A BIGGER ENCODING, NOT TO PAD A SMALL ONE.** The paragraph above is what
+makes that possible: `max_chain` yields 35 distinct output lengths for the same input, all of them
+correct. So rather than compressing to the smallest output and padding the difference, compress with
+a **size floor** and take the smallest admissible encoding **at or above** it. The sector arrives
+full because the encoding fills it, and there is no padding to be misread.
+
+Three constraints on using it, and they are the difference between a remedy and a new defect:
+
+- **A size floor is a remedy for ONE constrained sector, not an encoding policy.** Applied by
+  default it inflates every block on the disc for no reason.
+- **The default path must stay "smallest admissible encoding", as its own branch.** Keeping the
+  floor case separate is what makes "absent a floor, this returns exactly what it returned before"
+  structural rather than an argument.
+- **An unsatisfiable floor must RAISE, never fall back to padding.** Falling back reintroduces the
+  exact defect the floor exists to prevent, at the one moment nobody is watching. Every candidate
+  encoding is still checked for a byte-exact round trip, an unchanged overrun and a length divisible
+  by 4 before the floor is even consulted.
 
 ---
 
@@ -1584,7 +1671,399 @@ non-LZS compression, a Huffman tree inside a type 46 overlay, and the 26,635-sec
 
 ---
 
+## 15c. The message box, and what 0x7F04 does to it
+
+### Three lines, and the shipped script never exceeds it
+
+**A message box displays three lines. A fourth scrolls the first off the top, silently.**
+MEASURED on hardware 2026-08-21: a scene rebuilt with every box at three lines or fewer rendered
+all 29 boxes whole, and an earlier build of the same scene with eight boxes at four or five lines
+lost the first line of every one of them.
+
+**MEASURED across the shipped script: 100.00% of 24,169 boxes are three lines or fewer, with
+zero exceptions.**
+
+| lines | boxes | share |
+|---|---|---|
+| 1 | 3,750 | 15.52% |
+| 2 | 6,384 | 26.41% |
+| 3 | 14,035 | 58.07% |
+| 4 or more | **0** | |
+
+Counting this correctly needs one detail. A box ends at `0x7F0A` or `0x7F0B`, and the usual
+continuation sequence is `0x7F0A 0x7F02 0x7F04`. **The `0x7F02` in that sequence belongs to the
+terminator, not to the box that follows it**; counting it as a line break inflates every continued
+box by one and produces a small phantom population of four-line boxes. 8,152 of 8,157 continuation
+boxes carry exactly that one leading `0x7F02` and **no box in the game carries a second one**, so
+discounting it hides nothing.
+
+### 0x7F04 suppresses a prefix the data does not contain
+
+A box whose opening run of control codes does **not** contain `0x7F04` is drawn with a leading
+two-cell `＊「` that **the engine supplies and the text does not contain**. A box that does carry
+`0x7F04` is drawn without it.
+
+MEASURED on screen, text id 0x006C: strings 00 to 06 all open with `0x7F04` and none shows the
+prefix; strings 07 to 10 open without it and all four show it. The discriminating case is **string
+04, `シンシアは　モシャスをとなえた！！`, which carries `0x7F04` but has no speaker bracket and no
+name code at all, and still draws no prefix.** It renders twice in that scene.
+
+MEASURED across the shipped script:
+
+| | boxes | share |
+|---|---|---|
+| opening run contains `0x7F04` | 14,084 | 58.71% |
+| opening run does not | 9,904 | 41.29% |
+
+**This does not correct the published reading of `0x7F04` as a name decorator; it confirms it.**
+Of the 14,084 boxes that carry the code, **13,550 (96.21%) do supply a name**, 12,545 through a
+name control code inside the same opening run and 1,005 as literal text followed by `「`. Only 534
+carry no name, and those are narration lines where a name appears in prose without a bracket. What
+is recorded here is the rendering consequence rather than the purpose: the prefix is keyed on the
+code, and it stays suppressed even for the 534.
+
+**The practical consequence for anyone laying out text**: the usable width of a box is 20 cells
+with `0x7F04` and 18 without, because the prefix eats two.
+
+**A methodological warning, since this took three attempts.** `0x7F04` is normally followed inside
+the same opening run by the name code. A regex that consumes the whole leading control-code run
+before looking for a name therefore eats the name, and reports a population of nameless boxes that
+does not exist. Parse the opening run into a list of codes and look inside it.
+
+---
+
+### 15c-i. THE BOX IS 224 UNITS AND FONT 2 IS PROPORTIONAL. A CHARACTER COUNT IS NOT THE QUANTITY THE ENGINE ADDS UP
+
+MEASURED 2026-08-26. **This supersedes the character cap this project has authored against since
+Phase 1.** Nothing computed against the old cap is retracted: every such figure is true of the
+character count it measured. What changes is that a character count was never the engine's
+quantity.
+
+**1. THERE IS NO HORIZONTAL WIDTH CHECK. The engine draws past the box edge.** The instruction
+long read as the width test is **VERTICAL**: a Y accumulator against box HEIGHT, confirmed on 55
+live blocks reading rows rather than columns. **Every access to the box width in the formatter was
+read, and it is used ONCE, for a centering offset.** Nothing stops a long line; it simply draws
+outside the frame. **And the shipped game very likely does exactly that, once**, which is under
+"The shipped game against the model" below.
+
+> **AND THE CENTERING LEG IS NOT TAKEN. MEASURED 2026-08-26, Phase 114: the message box is NOT
+> centered in any of the 55 observed states. Text is LEFT ALIGNED at x = 0.** The centering is
+> gated on `137(s0) == 0` through the same test that gates the 12-unit pull back in point 4, and
+> `137(s0)` reads 0 in all 55. **The sentence above stays because it is true of the CODE**: the box
+> width is read once and it feeds a centering offset. **What it does not tell you is that the offset
+> is never applied in any state this project has observed.** Anything describing the dialogue box as
+> centering its lines is describing a leg these 55 samples do not take. Stated as a 55-sample
+> observation, not as a proof of impossibility.
+
+**2. The box is 224 UNITS and font 2 is PROPORTIONAL**, widths **3 to 13** across 521 entries **in
+the PRISTINE executable. A build of ours carries 523**, and which one a width tool walks is not a
+detail: `docs/FONTS.md` section 7.
+Kana average **10.7**; fullwidth lowercase Latin averages **7.4**.
+
+**3. The old cap of 21 was a statistic over JAPANESE**, whose glyphs average **11.6 units**.
+**English averages 8.01.** Over 348 authored lines the widest, at 20 characters, is **176 units,
+79 percent of the box.**
+
+**4. THE PREFIX AND THE HANGING INDENT. THE DRAWN PREFIX COSTS 15 UNITS ON LINE 0, SO THE LINE-0
+BUDGET IS 209.** And, not previously in this record at all:
+
+> **`{7F01}` and `{7F02}` start the next line at a 16-UNIT HANGING INDENT when the latch is set.**
+
+The prefix is **bit 0 of the box flags word, PER CALL SITE**, live in **22 of 55** states, and it
+is **cleared by `{7F0A}` and `{7F0B}`, so it fires once per BOX** rather than once per line.
+
+> **CORRECTED IN PLACE, 2026-08-26, Phase 114. This paragraph used to read "15 units less a 12-unit
+> pull back, so 3 units net on line 0", which disagreed with the model block seventeen lines below
+> by 12 units. THE MODEL BLOCK WAS RIGHT. A reader computing 221 from the old clause gets a number
+> no leg of the code produces.**
+>
+> **The 12-unit pull back is REAL and it does not RUN.** MEASURED: `lhu 120(s0)` / `addiu -12` /
+> `sh 120(s0)` does rewind the horizontal accumulator, clamped on the accumulator itself, so "3
+> net" was mechanically defensible **as a statement about the right-edge shift of a short line**.
+> **It is not a budget.** The `-12` sits behind a guard on `137(s0)`, and **`137(s0)` reads 0 in all
+> 55 live message-box states and in all 22 where the prefix is enabled**, so the branch is taken and
+> **the skip target zeroes the accumulator instead.** Stated as a 55-sample observation, not as a
+> proof of impossibility.
+>
+> **A second reason that holds even if it did run.** The pull back **spends left-edge room to buy
+> right-edge room, and at the cap there is no left-edge room left.** Simulated exactly: **by
+> `s1 = 201` the centering is already under 12, the clamp fires, and the full 15 is paid.**
+>
+> > **The refund exists only in the regime where it is not needed.**
+>
+> **Largest line 0 that does not clip: 209 units, with centering on or off. Both legs, one answer.**
+>
+> **Convention, and it is worth one unit: 209 counts the trailing 1-unit gap as INSIDE the box.**
+> Treated as outside, the same measurement reads 210. Pick one and say which; nothing else changes.
+
+**5. THE HAZARD NO CHARACTER GATE CAN SEE: 21 capitals plus the prefix is 232 units, 104 percent
+of the box. It clips.** A character cap is **simultaneously too tight for lowercase and too loose
+for capitals**, which is why this is a change of unit and not a change of number. Codex rule 35.
+
+**THE 232 SHOWS ITS WORK, so nobody has to take it on trust.** Per-letter fullwidth capital widths
+come from the game's own font 2 table, and the **1-unit gap per glyph is measured in all 43 live
+boxes**: **mean capital 9.35**, so **10.35 with the gap**, and **21 x 10.35 = 217. 217 + 15 = 232**,
+104 percent of 224.
+
+**And a worked sentence rather than a mean, because rule 35's own corollary forbids leaning on
+one.** `THE HERO HAS RETURNED` is **21 characters, 216 units, 231 with the prefix. It clips by 7.**
+Three realistic all-caps lines measured letter by letter rather than averaged: **231, 231, 226.
+All three exceed 209.** **21 of the widest capital is 288.** At the mean, **20 capitals is the last
+length that fits.**
+
+**The hazard is not an artifact of charging 15 rather than 3**, which is the first thing anyone will
+suspect after the correction in point 4. It survives either figure, and it survives the mean being
+replaced by real letters.
+
+#### The model, in general form
+
+```
+line width = sum over glyphs of ( font2_width(glyph) + one gap )
+budget     = 224
+             minus 15 on line 0        when the box has no {7F04}   ->  209
+             minus 16 on lines 1 and 2 when the box has no {7F04}   ->  208
+```
+
+**THIS BLOCK IS THE AUTHORITY AND POINT 4 USED TO CONTRADICT IT.** MEASURED, Phase 114: **the
+line-0 budget with the prefix live is 209**, and the 12-unit refund that would have made it 221 is
+behind a guard the message box does not pass. **No leg of the code produces 221.** The correction
+and both independent reasons are in point 4. **A box that carries `{7F04}` draws no prefix and gets
+the full 224.**
+
+**8.01 AND 11.6 ARE MEANS AND A GATE MUST NEVER MULTIPLY THEM.** Sum the real widths, glyph by
+glyph, out of the font 2 table. The means are for reasoning about headroom and for nothing else,
+and they do not compose: 21 characters at the Japanese mean of 11.6 is **243.6 units against a
+224-unit box**, which is an impossible line.
+
+**CORRECTED IN PLACE, 2026-08-26.** This paragraph used to end "so the old 21-character cap and the
+measured mean cannot both be describing the same lines", and left that standing as an unresolved
+arithmetic inconsistency in the record. **It is resolved**, under "The shipped game against the
+model" below: **long shipped lines use narrower glyphs.** 21-glyph lines exist and fit, at **10.6**
+units per glyph rather than 11.6, and the game **never writes a 22-glyph line at all**. **243.6
+never described a real line.** Nothing above is retracted, and 11.6 remains the correct mean over
+the population it was taken on. That is precisely why multiplying it by a length drawn from the top
+of the range is wrong: the mean is not constant along the axis it was multiplied by. A gate that
+multiplies a mean is a character gate wearing units.
+
+#### THE STANDING LIMIT
+
+> **The unit model PREDICTS. It has not been booted.**
+
+**Nothing may be authored longer on the strength of it.** Confirmation is named and cheap: **one
+build with a deliberately 26-character unnamed line 0 on a prefix-live call site.** Until that
+boots, treat the extra headroom as unproven and keep authoring to the old budget.
+
+#### A NAME CODE IS CHARGED AT EIGHT CHARACTERS
+
+**DECIDED 2026-08-27, phase 118. Names are sized at EIGHT CHARACTERS throughout, so every name code
+in a line is charged at its eight-character width and not at the width of the short token it shows
+in an editor.** This is the units model's half of the decision; the authoring half is R15 in
+`corpus/editorial/voice-sheet.txt`.
+
+**A name code has no width of its own, and that is why this belongs here rather than only in the
+voice sheet.** The engine substitutes glyphs and then sums THEIR widths through the model above, so
+what a name costs depends on which letters the player typed. **Eight characters is a BUDGET, not a
+measurement**: it fixes how many glyphs may arrive, and the unit cost of those eight still varies
+with the glyphs. **A line that fits at the mean can clip at eight capitals**, which is point 5 of
+this section aimed at a substitution instead of at typed text, and it is why the character figure
+cannot be the whole answer here either.
+
+**It supersedes the 5-cell name budget used in the Phase 46 build**, which is not retracted: it was
+true of that build. `voice-sheet.txt` R8 carried a pointer to that figure and has been corrected in
+place.
+
+**Cost of the decision, MEASURED and isolated: 29 lines were fixed to clear eight characters, with
+zero meaning loss**, proven token for token against a control that catches a deleted word. **Zero
+lines are over at four characters and zero at six. Everything that is over is over at eight**, so
+the cost does not grow with the width; it is those 29 lines.
+
+**The consequence for a named box's line 0 is already recorded**, in `voice-sheet.txt` 2.3f, which
+assumed eight before it was decided: **where the name code IS the tag, the tag alone is 9 cells.**
+
+#### Three limits on the measurement itself
+
+- **224 is measured on 55 blocks that were all the standard dialogue box.** Other window types are
+  not covered by it.
+- **13,553 of 16,434 strings were excluded from the unit census** for carrying a substitution
+  code, leaving 2,881. That is **82.5 percent excluded**, large enough that **the strata comparison
+  must not be leaned on.** **And that exclusion is exactly the population the eight-character charge
+  above governs**, so the unit census says nothing about lines carrying a name and cannot be used to
+  check that charge.
+- **The shipped game did NOT settle the prefix question.** Charging the prefix costs **22 extra
+  violations in 3,581 lines, 0.6 percent**, which is not a falsification either way: **Japanese
+  never runs tight enough against 224 for 15 units to show.** That was reported as a refusal rather
+  than as a result, and the refusal is the part worth keeping.
+
+#### The shipped game against the model, and the one line that exceeds the box
+
+MEASURED 2026-08-26. **This is the first shipped-game evidence the unit model has had.** Over
+**3,969 shipped lines, exactly ONE exceeds 224 units.**
+
+> **`0x048F` string 70, box 0, line 0, unnamed. 229 units. Over by 5.**
+
+**The next widest is 223.** Every glyph in that line was re-read individually out of the game's own
+font 2 table rather than trusted as a sum. **No width is an outlier.** The widths present are 7,
+10, 11 and 12, the crowded middle of a 3-to-13 distribution, and **the three suspicious 13s are
+only 3 glyphs in the whole table, none of them in this line.**
+
+**Three of the four ways this figure could have been manufactured were tested and closed. The
+fourth is open and is stated.**
+
+| escape | verdict |
+| --- | --- |
+| a bad font 2 table entry inflating the sum | **CLOSED**, every glyph re-read individually, no outlier |
+| length, the line is simply longer than any other | **CLOSED**, the overrun is the 20-glyph line, below |
+| a wider window exists somewhere on the disc | **CLOSED**, maximum window width on the disc is **240 px**, eight types |
+| this string draws in some window not yet characterized | **OPEN**, see the caveat below |
+
+**Live geometry: 61 text states across 85 dumps, two window types, both 240 px, inner width 224 in
+every one, margin 16 without exception.**
+
+##### The 21-versus-11.6 puzzle is RESOLVED, and length is not what does it
+
+**Long shipped lines use NARROWER glyphs.**
+
+| glyphs on the line | widest line at that length | units per glyph |
+| ---: | ---: | ---: |
+| 19 | 222 | 11.7 |
+| **20** | **229** | 11.4 |
+| 21 | 223 | **10.6** |
+| 22 | **no such line exists** | |
+
+**The overrun is the 20-glyph line, not the 21.** And **the shipped game never writes a 22-glyph
+line at all, which is what the old character cap was really recording.** The mean of 11.6 was being
+applied to a length at which the text has stopped using mean-width glyphs. This is the resolution
+the corrected paragraph above points at.
+
+##### THE CAVEAT, NAMED RATHER THAN BURIED
+
+> **The measurement did NOT establish which window `0x048F[70]` actually draws in.** The margin of
+> 16 is measured on two window types only. **A 240 px window with a margin under 11 would fit 229.
+> No evidence of such a window exists, but it is not excluded.**
+
+**It is answerable and it is cheap: catch that string on screen or in a dump and read the inner
+width at that moment.** Until that is done, the form to quote is this one:
+
+> **The shipped game VERY LIKELY draws past its own box edge, on one line in 3,969, by 5 units, in
+> the widest box it has.**
+
+**Not "the shipped game clips."** MEASURED: one line at 229 units, a widest box of 240 px giving
+224 inner, a margin of 16 on both window types observed live, and glyph widths verified
+individually. INFERRED: that this particular string draws in a 240 px window at the standard
+margin, and therefore overruns its box by 5 units.
+
+**This also puts a number on the third limit above.** "Japanese never runs tight enough against 224
+for 15 units to show" is now measured rather than asserted, and it is nearly true rather than true:
+**exactly one line in 3,969 runs tight enough, and that one runs 5 units past.**
+
+##### THIS NARROWS THE STANDING LIMIT. IT DOES NOT LIFT IT
+
+> **The unit model PREDICTS and has not been booted.**
+
+Unchanged, and it stays in the record in those words. The confirmation named above, one build with a
+deliberately over-length unnamed line 0 on a prefix-live call site, is still owed and is still the
+only thing that lifts it. **Nothing may be authored longer on the strength of this section.**
+
+##### Three counts in this section, three populations, not reconciled
+
+**3,969** shipped lines measured for width here. **3,581** lines in the prefix-charging comparison
+under "Three limits" above. **2,881** strings surviving the substitution-code exclusion from the
+unit census, out of 16,434. **These are three different questions and the figures must not be
+merged or treated as nested.** Anyone needing one denominator to cover two of them re-measures
+rather than assuming the larger contains the smaller.
+
+## 15d. Type 46, the MIPS overlays, and the text blocks inside them
+
+MEASURED, Phase 52. 612 type 46 sub-blocks, 600 LZS compressed and 12 raw, 43,846,220 bytes
+decompressed. **They hold only 188 distinct contents.** The sub-block header's third u32 is a load
+address and takes exactly three values: `0x8013BF04` on 502, `0x80102448` on 93 and `0x80143F80`
+on 17. `0x80102448` is the byte the game's own boot clear stops at, section 12b and Phase 49.
+
+**The overlays carry text blocks in the format of section 3.** Same six-u32 header, same 0x7Exx
+dictionary, same dual-base tree, same self pointer at `a`.
+
+| | |
+|---|---:|
+| embedded text blocks, occurrences over the 188 distinct contents | 131 |
+| **distinct text blocks** | **15** |
+| distinct text ids, all in `0x0473` to `0x048B` | 15 |
+| strings | 1,695 |
+| displayed characters, dictionary expanded | 28,602 |
+| bytes of text block inside 5,618,043 bytes of distinct overlay | 44,196, **0.79%** |
+
+**None of the 15 ids occurs in the archive population or in the executable population.** They sit
+immediately below the executable's `0x048C`, `0x048D` and `0x048F`.
+
+The finder is the structural test of section 3 plus a complete decode. It is insensitive to its own
+filters: relaxing the id range to `0x0001..0xFFFF` and dropping the self pointer requirement both
+return the same 131.
+
+### How an overlay reaches its own pool
+
+An overlay is loaded at a fixed address, so its `jal` targets are absolute:
+
+| target | routine | sites | distinct overlays |
+|---|---|---:|---:|
+| `0x8008F178` | `register_block` | **137** | 71 |
+| `0x8008F280` | the reference resolver, section 12 | **304** | 106 |
+
+Every `register_block` site forms its pool's absolute base with a static `lui`/`addiu` pair, and
+that base resolves to a text block header. **This is the dynamic registration Phase 50 inferred
+from the executable side**, where 19 of 24 call sites load their base from memory.
+
+The overlays also carry the packed reference word of section 13: **1,781 of them, 1,779 landing
+exactly on a string start.**
+
+No length is baked into any instruction, and there is nowhere to put one. String symbol lengths run
+0 to 112, so a length field would need 7 bits, and the reference word is 12 bits of text id plus 20
+bits of bit offset with nothing spare.
+
+### Correcting Phase 32's reading of the index
+
+Phase 32 found a u16 index whose entries chain as `offset + 2 * length`, could not find a base that
+put the boundaries on string starts, and concluded the top four bits were not a length.
+
+**The chain is real, the top four bits ARE a length in 16-bit units, and the entries are DICTIONARY
+PHRASES rather than strings.** Measured over 531 entries in 12 blocks: 519 of 519 consecutive pairs
+chain exactly; the top four bits take 7 distinct values so it is not a flag; it varies inside every
+table so it is not a pool id; 299 of 531 exceed 3 so it is not an alignment count.
+
+**The base is not a constant to search for.** The phrases begin immediately after the index, so
+
+    base = index_start + 2 * count - offset[0]
+
+and the entry count is derived the same way `dictionary.parse` already derives it. The tiled phrase
+region ends two bytes before `c` in the pools measured, because **`c` is that region's end rounded
+up to a multiple of 4**.
+
+### One population that is not Huffman
+
+MEASURED: 1,565 deduplicated characters of plain Shift-JIS sit outside every text block. They are
+the memory card save file title, the message speed labels and a few short labels. INFERRED, and the
+reason is sound: the save file title has to be plain Shift-JIS because the PlayStation BIOS memory
+card manager renders it, not the game.
+
+---
+
+## 15e. Font 2, the dialogue font
+
+**Font and text rendering detail lives in `docs/FONTS.md`, which is the authoritative
+location for it.** It is not duplicated here.
+
+The font 2 table, its descriptor layout, the 2bpp run length payload, the donor rule, the
+fact that the region of zeros at `0x800B9248` is the malloc heap rather than free space, and
+the terminator method for adding a character are all in `docs/FONTS.md`.
+
+---
+
 ## 16. On gates
+
+**The method rules this project runs on live in `docs/CODEX.md`, not here.** That file is the
+authoritative location for them; this section states only the one that shapes the gate suite
+directly, and does not repeat the rest.
+
+### The rule
+
 
 The most transferable thing in this repository is not a format detail. It is this.
 

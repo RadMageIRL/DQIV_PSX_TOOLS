@@ -22,6 +22,7 @@ import sys
 from . import iso as isomod
 from . import hbd, textblock, huffman, dictionary, sectortable, codes
 from . import mips, referrers
+from . import overlay as overlaymod
 
 # Baseline roll-up. Stored in the LIBRARY, not in the corpus, so the corpus
 # cannot silently update its own expectation. If a library change moves this,
@@ -35,8 +36,28 @@ from . import mips, referrers
 # characters: the fullwidth Latin alphabets and the digit and hex sets. The
 # archive roll-up moves for exactly one reason, dq4-side-by-side.txt, which
 # lists every string including the executable ones.
-ROLLUP_EXPECTED = "5d40cd227973ae70011eb834c1edfb916041847b1084d8d1bcb78c8d0a2f1c41"
-EXE_ROLLUP_EXPECTED = "5f88b66228987cd9392fbb23592b8ff4b19933a9edd0900debb9d1e22b0090b2"
+# Phase 46: both pins moved deliberately. A third executable-resident text block
+# was found, 0x048F at 0x800B0D24, and it was invisible because the structural
+# test required c == 24. That is only true of a block with NO dictionary; one
+# that has a dictionary carries it in [24, c), so c is larger and f6 is 24.
+# The manifest diff was 2 rows added, exe/raw/048F.txt and exe/expanded/048F.txt,
+# and 2 rows changed, dq4-side-by-side.txt and exe/blockindex.txt. Nothing else.
+#   previous archive pin  5d40cd227973ae70011eb834c1edfb916041847b1084d8d1bcb78c8d0a2f1c41
+#   previous exe pin      5f88b66228987cd9392fbb23592b8ff4b19933a9edd0900debb9d1e22b0090b2
+# NOTE the archive pin moved for an executable-side reason: dq4-side-by-side.txt
+# holds both populations and is counted as an archive file, so the separation
+# between the two roll-ups is not as clean as the comment below claims.
+# Phase 53: the archive pin moved DELIBERATELY, after a line-by-line manifest
+# review. 43 rows added, ALL of them under overlay/; 0 removed; exactly ONE
+# changed, dq4-side-by-side.txt, which is the same cross-population leak noted
+# above. editorial/ contributed 0 rows, checked rather than assumed. The EXE
+# pin did NOT move, which is the evidence that the subtrees stay separate.
+#   previous archive pin  2e60b20c5f9cc27c33854024385ff6bc9a53dad80a487d71e52ee944259b8bf6
+ROLLUP_EXPECTED = "fb5d80d14cf91abe438444dff04714444f8e666a879f7e6566e83afda0de3510"
+EXE_ROLLUP_EXPECTED = "b663c7abde4c355b0262241213f847714480b575167ca10098eb7837cac2a6e7"
+# Phase 53 added a THIRD population, the type 46 MIPS overlays. Set on first
+# generation, after the manifest diff was reviewed line by line.
+OVERLAY_ROLLUP_EXPECTED = "085185a4fd7fd61edf40ee71d682a5f0f1cd1855359ec5d3f446958cb6905e9c"
 
 DUMMY_MARK = "ダミー"          # katakana damii
 NUL = bytes([0])
@@ -588,6 +609,89 @@ def build(disc_path, out_dir):
                    nref, "yes" if tb.f6 else "no", "yes" if tb.d else "no"))
     write(os.path.join(out_dir, "exe", "blockindex.txt"), exe_index_lines)
 
+    # -------------------------------------------------------------- overlay
+    # A THIRD subtree, and a third roll-up. The type 46 MIPS overlays hold text
+    # blocks in this same format, ids 0x0473 to 0x048B, and not one of those ids
+    # occurs in the archive or the executable. Kept separate for the same reason
+    # exe/ is: a moved archive roll-up must keep meaning exactly one thing.
+    #
+    # dq4/overlay.py is a LOCATOR. Everything below decodes with the same
+    # TextBlock, HuffmanTree and dictionary as the archive, which is why type 46
+    # needed no new format work. MEASURED, Phase 52.
+    ov_stats = {"blocks": 0, "strings": 0, "chars": 0, "occurrences": 0}
+    ov_index_lines = [
+        "# text blocks embedded in the type 46 MIPS overlays, located by the",
+        "# six-u32 header plus a valid self pointer at a, then decoded.",
+        "#",
+        "# These are NOT in the archive, NOT in the executable, and NOT covered",
+        "# by either roll-up above.",
+        "#",
+        "# text id | a | c | d | e | f6 | symbols | strings | characters |"
+        " dictionary | occurrences | first site",
+    ]
+    for tb, sites in overlaymod.blocks(arch, blocks):
+        tree = huffman.HuffmanTree(tb)
+        syms = tree.decode()
+        entries = dictionary.parse(tb.raw, tb)
+        expanded, _unres = dictionary.expand(syms, entries)
+        rstr, rtail = huffman.split_strings(syms)
+        estr, etail = huffman.split_strings(expanded)
+        nm = "%04X" % tb.id
+        sec0, idx0, off0 = sites[0]
+        head = ["# overlay text block id %04X, sector %d sub %d +0x%X"
+                % (tb.id, sec0, idx0, off0),
+                "# symbols %d strings %d occurrences %d" % (len(syms), len(rstr), len(sites))]
+        rl = list(head)
+        for i2, stx in enumerate(rstr):
+            rl.append("[%02d] %s" % (i2, render(stx)))
+        if rtail:
+            rl.append("[tail] %s" % render(rtail))
+        write(os.path.join(out_dir, "overlay", "raw", nm + ".txt"), rl)
+        el = list(head)
+        nch = 0
+        for i2, stx in enumerate(estr):
+            text = render(stx)
+            el.append("[%02d] %s" % (i2, text))
+            n_i = sum(1 for k, _v in stx if k == huffman.SJIS)
+            nch += n_i
+            # Rank 3, so overlay material sorts after the archive and the
+            # executable. No referrer measurement is claimed: the 1,781 packed
+            # reference words Phase 52 measured live in overlay CODE, and no
+            # gate covers them, so every string here is UNRESOLVED rather than
+            # given a status this corpus cannot support.
+            if not n_i:
+                st_name = CONTROL if any(k == huffman.CTRL for k, _v in stx) else EMPTY
+            else:
+                st_name = UNRESOLVED
+            subs = sorted({v for k, v in stx
+                           if k == huffman.CTRL and v in CTRL_RANGE_SUB})
+            rec = ["[id %04X / str %02d / source OVERLAY sector %d sub %d +0x%X]"
+                   % (tb.id, i2, sec0, idx0, off0),
+                   "STATUS: %s  BLOCK: OVERLAY (no referrer gate covers these)"
+                   % st_name]
+            if subs:
+                rec.append("SUBS: %s" % ", ".join("%04X" % v for v in subs))
+            rec += ["JP: %s" % text, "EN:", "NOTE:", ""]
+            side_rows.append((3, tb.id, i2, rec))
+        if etail:
+            el.append("[tail] %s" % render(etail))
+        write(os.path.join(out_dir, "overlay", "expanded", nm + ".txt"), el)
+        if entries:
+            dl = ["# overlay id %04X phrase dictionary, %d entries" % (tb.id, len(entries)),
+                  "# index | phrase"]
+            for di, ent in enumerate(entries):
+                dl.append("%3d | %s" % (di, render(ent)))
+            write(os.path.join(out_dir, "overlay", "dictionaries", nm + ".txt"), dl)
+        ov_stats["blocks"] += 1
+        ov_stats["strings"] += len(rstr)
+        ov_stats["chars"] += nch
+        ov_stats["occurrences"] += len(sites)
+        ov_index_lines.append(
+            "%04X | %d | %d | %d | %d | %d | %d | %d | %d | %s | %d | sector %d sub %d +0x%X"
+            % (tb.id, tb.a, tb.c, tb.d, tb.e, tb.f6, len(syms), len(rstr), nch,
+               "yes" if tb.f6 else "no", len(sites), sec0, idx0, off0))
+    write(os.path.join(out_dir, "overlay", "blockindex.txt"), ov_index_lines)
+
     n_dummy_ids = sum(1 for r in block_rows if r[8])
     n_dummy_strings = sum(r[5].get(DUMMY, 0) for r in block_rows)
     n_clean = sum(1 for r in block_rows if r[6] == "CLEAN")
@@ -673,17 +777,19 @@ def build(disc_path, out_dir):
     clean_nd = sum(1 for r in block_rows if r[6] == "CLEAN" and not r[8])
     total_nd = sum(1 for r in block_rows if not r[8])
 
-    rollup, exe_rollup, nfiles = manifest(out_dir, len(by_id), total_chars, str_lengths, variants,
+    rollup, exe_rollup, ov_rollup, nfiles = manifest(
+                              out_dir, len(by_id), total_chars, str_lengths, variants,
                               status_totals, clean, clean_nd, total_nd,
                               chars_clean, chars_blocked, ph_cross, exe_stats,
-                              ed_strings, ed_chars)
-    return dict(rollup=rollup, exe_rollup=exe_rollup, nfiles=nfiles, nids=len(by_id), chars=total_chars,
+                              ed_strings, ed_chars, ov_stats)
+    return dict(rollup=rollup, exe_rollup=exe_rollup, ov_rollup=ov_rollup, nfiles=nfiles, nids=len(by_id), chars=total_chars,
                 lengths=str_lengths, variants=variants,
                 records=len(side_rows), placeholders=len(placeholders) // 4,
                 status=status_totals, clean=clean, clean_nd=clean_nd,
                 total_nd=total_nd, chars_clean=chars_clean[0],
                 chars_clean_dummy=chars_clean[1],
                 chars_blocked=chars_blocked[0], ph_cross=ph_cross, exe=exe_stats,
+                overlay=ov_stats,
                 ed_strings=ed_strings, ed_chars=ed_chars,
                 blocks=block_rows)
 
@@ -758,7 +864,7 @@ def voice_sheet(ctrl):
 
 def manifest(out_dir, nids, total_chars, str_lengths, variants,
              status, clean, clean_nd, total_nd, chars_clean, chars_blocked,
-             ph_cross, exe_stats, ed_strings, ed_chars):
+             ph_cross, exe_stats, ed_strings, ed_chars, ov_stats=None):
     files = []
     for root, dirs, names in os.walk(out_dir):
         # editorial/ holds HAND-AUTHORED work: the voice sheet, the name glossary,
@@ -777,17 +883,22 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
     write(os.path.join(out_dir, "MANIFEST.sha256"),
           ["%s  %s" % (h, rel) for rel, h in files])
 
-    # Two roll-ups, deliberately. The archive roll-up must keep exactly the
-    # meaning it had, so exe/ is excluded from it: a moved archive hash then
-    # still means "the archive decode changed" and nothing else.
+    # THREE roll-ups, deliberately. The archive roll-up must keep exactly the
+    # meaning it had, so exe/ and overlay/ are both excluded from it: a moved
+    # archive hash then still means "the archive decode changed" and nothing
+    # else. Phase 53 added the third; the caveat above about
+    # dq4-side-by-side.txt now applies to three populations, not two.
     def _roll(rows):
         joined = "\n".join("%s  %s" % (h, rel) for rel, h in rows)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
-    arch_files = [r for r in files if not r[0].startswith("exe/")]
+    arch_files = [r for r in files
+                  if not r[0].startswith("exe/") and not r[0].startswith("overlay/")]
     exe_files = [r for r in files if r[0].startswith("exe/")]
+    ov_files = [r for r in files if r[0].startswith("overlay/")]
     roll = _roll(arch_files)
     exe_roll = _roll(exe_files) if exe_files else ""
+    ov_roll = _roll(ov_files) if ov_files else ""
     sl = sorted(str_lengths)
     md = [
         "# DQ4 corpus manifest",
@@ -801,7 +912,8 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
         "    %s" % roll,
         "",
         "SHA-256 over the sorted per-file hashes in MANIFEST.sha256, EXCLUDING",
-        "exe/. If this value moves, the archive decode changed. Diff before accepting",
+        "exe/ and overlay/. If this value moves, the archive decode changed.",
+        "Diff before accepting",
         "a new one; never accept a moved hash by regenerating the expectation.",
         "",
         "The executable-resident blocks carry their own roll-up, so that the two",
@@ -897,9 +1009,44 @@ def manifest(out_dir, nids, total_chars, str_lengths, variants,
         "",
         "Combined with the archive: %d strings, %d displayed characters."
         % (len(str_lengths) + exe_stats["strings"], total_chars + exe_stats["chars"]),
+        "",
+        "## Overlay-resident blocks",
+        "",
+        "Held in `overlay/`, outside both roll-ups above, for the same reason",
+        "`exe/` is. These are the text blocks embedded in the type 46 MIPS",
+        "overlays, ids 0x0473 to 0x048B. MEASURED, Phase 52.",
+        "",
+        "    %s" % ov_roll,
+        "",
+        "SHA-256 over the overlay/ rows of MANIFEST.sha256 alone.",
+        "",
+        "| Metric | Value |",
+        "|---|---:|",
+        "| distinct blocks | %d |" % (ov_stats or {}).get("blocks", 0),
+        "| occurrences across the 612 type 46 sub-blocks | %d |"
+        % (ov_stats or {}).get("occurrences", 0),
+        "| strings | %d |" % (ov_stats or {}).get("strings", 0),
+        "| displayed characters | %d |" % (ov_stats or {}).get("chars", 0),
+        "",
+        "NOT folded in: 1,565 characters of plain Shift-JIS that sit outside every",
+        "text block in those overlays. They are the memory card save-file title and",
+        "the labels the console's own BIOS manager renders, not game text.",
+        "MEASURED, Phase 52. OUT OF SCOPE, recorded rather than extracted.",
+        "",
+        "## All three populations",
+        "",
+        "| Population | strings | displayed characters |",
+        "|---|---:|---:|",
+        "| archive | %d | %d |" % (len(str_lengths), total_chars),
+        "| executable | %d | %d |" % (exe_stats["strings"], exe_stats["chars"]),
+        "| overlay | %d | %d |"
+        % ((ov_stats or {}).get("strings", 0), (ov_stats or {}).get("chars", 0)),
+        "| **total** | **%d** | **%d** |"
+        % (len(str_lengths) + exe_stats["strings"] + (ov_stats or {}).get("strings", 0),
+           total_chars + exe_stats["chars"] + (ov_stats or {}).get("chars", 0)),
     ]
     write(os.path.join(out_dir, "MANIFEST.md"), md)
-    return roll, exe_roll, len(files)
+    return roll, exe_roll, ov_roll, len(files)
 
 
 def main(argv=None):
@@ -932,9 +1079,18 @@ def main(argv=None):
     print("  exe blocks            %d, %d strings, %d characters, %d referenced"
           % (r["exe"]["blocks"], r["exe"]["strings"], r["exe"]["chars"],
              r["exe"]["referenced"]))
+    print("  overlay blocks        %d, %d strings, %d characters, %d occurrences"
+          % (r["overlay"]["blocks"], r["overlay"]["strings"], r["overlay"]["chars"],
+             r["overlay"]["occurrences"]))
+    print("  ALL THREE             %d strings, %d characters"
+          % (len(sl) + r["exe"]["strings"] + r["overlay"]["strings"],
+             r["chars"] + r["exe"]["chars"] + r["overlay"]["chars"]))
     print("")
     print("  ROLL-UP     %s" % r["rollup"])
     print("  EXE ROLL-UP %s" % r["exe_rollup"])
+    print("  OVL ROLL-UP %s" % r["ov_rollup"])
+    if OVERLAY_ROLLUP_EXPECTED and r["ov_rollup"] != OVERLAY_ROLLUP_EXPECTED:
+        print("  overlay roll-up does not match the value stored in the library.")
     if EXE_ROLLUP_EXPECTED and r["exe_rollup"] != EXE_ROLLUP_EXPECTED:
         print("  exe roll-up does not match the value stored in the library.")
     if r["rollup"] != ROLLUP_EXPECTED:

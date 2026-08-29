@@ -23,10 +23,33 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# THIS SUITE MUST NOT DIE OF ITS OWN OUTPUT, and it has.
+#
+# Gate 7 prints a Japanese string as its expected value. When stdout is a pipe or
+# a file rather than a console, Python picks the locale encoding, which on a
+# Windows box is cp1252, and the print raises UnicodeEncodeError. The suite died
+# there after six gates with a return code of 1.
+#
+# That alone is an annoyance. What made it expensive is that a driver capturing
+# the output parsed the rows already printed and reported "5 gates, 5 pass, 0
+# FAIL": A TRUNCATED SUITE WEARING THE SHAPE OF A CLEAN ONE. The full suite is 38
+# gates. The companion disc, which exists to fail and so prove the suite can
+# fail, also reported zero failures, because it too had crashed long before
+# reaching the gate that would have caught it.
+#
+# Fixed here rather than in the caller. A tool whose correctness depends on the
+# caller setting PYTHONIOENCODING has moved its own defect one level up.
+# `backslashreplace` is deliberate: it can mangle a character but it can never
+# raise, and a suite that cannot be killed by a print is worth a little mojibake
+# on a console that could not have rendered the character anyway.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 from dq4 import iso as isomod
 from dq4 import hbd, textblock, huffman, dictionary, sectortable, glyph, codes, lzs, fonts
 from dq4 import corpus as corpusmod
-from dq4 import mips, referrers
+from dq4 import mips, referrers, overlay, splitimm
 
 Q41_SIZE = 319436800
 # Phase 0 SHA-256 is of the DISC IMAGE file, not of the extracted archive.
@@ -42,6 +65,65 @@ PHASE0_CENSUS = {
 }
 
 STRING_10 = "どうした？　<7F1F>。<7F02>もう　降参かい？"
+
+
+def _carriers_of(arch, exe, tid):
+    """([(where, bytes)], unexaminable) for text block `tid`, in BOTH media.
+
+    Written for gate 44. The point is coverage, not speed: it walks every
+    sub-block of every type rather than the four types a census happened to
+    enumerate, because the defect this gate exists to catch is precisely a
+    carrier nobody thought to look in.
+
+    THE SECOND RETURN VALUE IS THE WHOLE REASON THIS SIGNATURE IS NOT JUST A
+    LIST. A sub-block that will not decompress, or that the overlay scanner
+    cannot read, is not evidence that the id is absent from it. It is a carrier
+    THIS FUNCTION DID NOT LOOK IN, which is the exact thing gate 44 exists to
+    make impossible, so it is counted and handed back rather than skipped.
+
+    A coverage gate that silently drops the carriers it could not read reports
+    N/N over a denominator it quietly shrank, and N/N is the answer it gives
+    when everything is fine. `referrers.py` carries the same warning from the
+    other end: a swallowed exception is how 922 of 976 type 39 blocks went
+    unexamined for three phases.
+
+    MEASURED on the pristine disc, 2026-08-28: 23,828 sub-blocks, 5,821 of them
+    LZS, and `unexaminable` is ZERO. So this is a latent defect being closed,
+    not an active undercount being corrected, and the figure the gate prints
+    today does not move. A BUILT disc is where it would bite, and a built disc
+    is the only thing gate 44 is ever pointed at.
+
+    The handlers stay broad rather than being narrowed to particular exception
+    types, because no failure has been observed here and narrowing to a guessed
+    list would convert an unexpected error into a crash rather than into a
+    count. Broad and COUNTED is the safe combination; broad and SILENT is not.
+    """
+    out = []
+    unexaminable = 0
+    if exe:
+        load, _pc, tsize, toff = mips.exe_mapping(exe)
+        for _va, tb in referrers.exe_blocks(exe, load, toff, tsize):
+            if tb.id == tid:
+                out.append(("exe:%04X" % tb.id, tb.raw[:tb.a]))
+    blocks = hbd.scan_blocks(arch)
+    for sec, sb in hbd.sub_blocks(blocks):
+        raw = hbd.sub_bytes(arch, sb)
+        if sb["flags"] == hbd.FLAG_LZS:
+            try:
+                raw = lzs.decompress(raw)
+            except Exception:
+                unexaminable += 1
+                continue
+        try:
+            found = overlay.scan_image(raw)
+        except Exception:
+            unexaminable += 1
+            continue
+        for off, tb in found:
+            if tb.id == tid:
+                out.append(("%d/%d t%d+%06X" % (sec, sb["idx"], sb["type"], off),
+                            raw[off:off + tb.a]))
+    return out, unexaminable
 
 
 class Report:
@@ -78,6 +160,13 @@ def main():
     ap.add_argument("--corpus-out", default=None,
                     help="directory for gate 22 to regenerate the corpus into; "
                          "gate 22 is skipped when omitted")
+    ap.add_argument("--edited-ids", default=None,
+                    help="comma-separated text block ids this image edited, e.g. "
+                         "047C,048F. Enables gate 44, CARRIER COVERAGE, which "
+                         "checks EVERY carrier of each id in BOTH media and "
+                         "reports N/N. Without it gate 44 renders a NOTE, "
+                         "because a build that does not declare what it edited "
+                         "cannot be checked for having missed a copy.")
     args = ap.parse_args()
 
     rep = Report()
@@ -441,7 +530,17 @@ def main():
         for o in range(0, tsize - 24, 4):
             w = struct.unpack_from("<6I", exe, toff + o)
             a, bid, c, _d, e, _f6 = w
-            if c != 24 or not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+            # c == 24 only for a block with no dictionary; one WITH a dictionary
+            # carries it in [24, c) and sets f6 to 24. Phase 46.
+            if not (0x001 <= bid <= 0x600) or not (24 < a < 0x40000):
+                continue
+            if _f6 == 0:
+                if c != 24:
+                    continue
+            elif _f6 == 24:
+                if not (24 < c < a):
+                    continue
+            else:
                 continue
             if e and not (24 < e <= a):
                 continue
@@ -450,9 +549,9 @@ def main():
             found.append((load + o, bid, a, e))
         rep.gate(28, "text blocks embedded in the executable",
                  [(v, b) for v, b, _a, _e in found]
-                 == [(0x800AF1C8, 0x48C), (0x800B0C5C, 0x48D)],
+                 == [(0x800AF1C8, 0x48C), (0x800B0C5C, 0x48D), (0x800B0D24, 0x48F)],
                  ", ".join("0x%08X id 0x%03X" % (v, b) for v, b, _a, _e in found) or "none",
-                 "0x800AF1C8 id 0x48C, 0x800B0C5C id 0x48D")
+                 "0x800AF1C8 id 0x48C, 0x800B0C5C id 0x48D, 0x800B0D24 id 0x48F")
 
         # 29  COMPANION to 28. The block is only real if references resolve INTO it.
         # Two static tables the disassembly names must land on its string starts, and a
@@ -480,8 +579,128 @@ def main():
                  len(refs) == 213 and hit == len(refs) and off1 == 0,
                  "%d refs, %d on a string start, %d at +1 bit" % (len(refs), hit, off1),
                  "213 refs, all on a string start, 0 at +1 bit")
+
+        # 45  THE SPLIT-IMMEDIATE RECOGNIZER, scored before anything believes it.
+        #
+        # Gates 29 and 30 cover references STORED as a word. This covers the ones
+        # the code CONSTRUCTS, which no search for a literal can find, and which
+        # a rewriter that cannot see them silently declines to fix. That is not a
+        # hypothetical: an undercounting recognizer is an undercount someone may
+        # notice, but a REWRITER with the same blind spot leaves the reference
+        # stale and the build is green, because the gate was handed the same list
+        # the rewriter used. This gate breaks that loop by scoring the recognizer
+        # against sites confirmed by disassembly rather than by the rewriter.
+        #
+        # Three parts, and the second is the one that matters most:
+        #
+        #   POSITIVE  the three lui/ori pairs that build 0x048C09A31 in a1.
+        #   READ-WRITE AGREEMENT  rewrite those halves to a different valid
+        #             string start and rescan. The recognizer must recover the
+        #             SAME three offsets carrying the NEW value. A reader and a
+        #             writer that disagree is exactly how a build ships half
+        #             translated, and nothing else here would catch it.
+        #   NEGATIVE  ids that name no executable block must score zero.
+        #
+        # WHAT IS DELIBERATELY NOT USED AS A CONTROL, because it was measured and
+        # it does not discriminate. The +/-1 bit shift that makes gate 29 sharp
+        # is useless here: string offset 0 is a real start, so shifting the set
+        # by one admits the immediate 1, and `lui rX,0x048C` then `ori rX,rX,1`
+        # is an ordinary code shape. It scores 32 against the real 3. A shuffled
+        # starts set of the same size scores 0, 10, 15, 15 and 0 over five seeds,
+        # which is not a control either. A DISCRIMINATOR THAT WORKS FOR ONE
+        # INSTRUMENT DOES NOT TRANSFER TO ANOTHER JUST BECAUSE THE POPULATION IS
+        # THE SAME, and both figures are recorded here so nobody re-derives them.
+        #
+        # SCOPE, stated because a scoped sweep must report a scoped number: the
+        # executable only. The archive carries far more of these, in overlay
+        # images, and sweeping it costs minutes.
+        si_text = exe[toff:toff + tsize]
+        si_starts = huffman.string_offsets(
+            [b for _v, b in referrers.exe_blocks(exe, load, toff, tsize)
+             if b.id == 0x048C][0])
+        si_sites = splitimm.find_word_refs(si_text, 0x048C, si_starts, base=load)
+        si_pairs = [(s.hi_off, s.lo_off) for s in si_sites]
+        si_vals = sorted(set(s.value for s in si_sites))
+        # READ-WRITE AGREEMENT. Rewrite both halves at every site to a different
+        # valid reference and rescan. Both halves always, never the low one
+        # alone: a low-half-only patch is correct until the value crosses a
+        # 0x10000 boundary and then silently is not.
+        si_new = (0x048C << 20) | sorted(si_starts)[5]
+        si_buf = bytearray(si_text)
+        for s in si_sites:
+            hi, lo = splitimm.halves(si_new, s.lo_op)
+            for _o, _imm in ((s.hi_off - load, hi), (s.lo_off - load, lo)):
+                _w = struct.unpack_from("<I", si_buf, _o)[0]
+                struct.pack_into("<I", si_buf, _o, (_w & 0xFFFF0000) | _imm)
+        si_again = splitimm.find_word_refs(bytes(si_buf), 0x048C, si_starts,
+                                           base=load)
+        si_rt = ([(s.hi_off, s.lo_off) for s in si_again] == si_pairs
+                 and sorted(set(s.value for s in si_again)) == [si_new])
+        si_ctrl = {t: len(splitimm.find_word_refs(si_text, t, si_starts,
+                                                 base=load))
+                   for t in (0x0001, 0x0123, 0x0999, 0x0FFF)}
+        rep.gate(45, "split-immediate recognizer  (COMPANION)",
+                 si_pairs == [(0x8002C070, 0x8002C078), (0x8002C168, 0x8002C170),
+                              (0x8008D4AC, 0x8008D4B4)]
+                 and si_vals == [0x048C09A31] and si_rt
+                 and not any(si_ctrl.values()),
+                 "%d sites, value(s) %s, rewrite round trip %s, controls %s"
+                 % (len(si_sites), ", ".join("0x%08X" % v for v in si_vals),
+                    "OK" if si_rt else "FAILED",
+                    ", ".join("%04X:%d" % kv for kv in sorted(si_ctrl.items()))),
+                 "3 sites building 0x048C09A31, rewrite round trip OK, "
+                 "0 for every control id")
+        # 42  MENU TEXT RESOLVES IN FONT 1, which is a different table from the
+        # one gate 38 checks. MEASURED, Phase 59: the message box draws from
+        # FONT2 and the menus draw from FONT1. The tables are not the same set,
+        # so a menu string checked against font 2 is not checked at all.
+        # The range is exe block 0x048C indices 550 to 778, which is the menu
+        # vocabulary: the command menu, the item and spell verbs, the tactics
+        # list, the adventure-log menu and the Yes/No pair at 757 and 758.
+        fimg = exe[toff:toff + tsize]
+        menu_codes = set()
+        n_menu = 0
+        for _va, tb in referrers.exe_blocks(exe, load, toff, tsize):
+            if tb.id != 0x048C:
+                continue
+            tree = huffman.HuffmanTree(tb)
+            syms = tree.decode()
+            entries = dictionary.parse(tb.raw, tb)
+            expanded, _u = dictionary.expand(syms, entries)
+            estr, _t = huffman.split_strings(expanded)
+            for st in estr[550:779]:
+                n_menu += 1
+                for kind, val in st:
+                    if kind == huffman.SJIS:
+                        menu_codes.add(val)
+        miss1 = fonts.missing(fimg, load, fonts.FONT1, menu_codes)
+        rep.gate(42, "menu strings resolve in font 1",
+                 n_menu == 229 and len(menu_codes) == 172 and not miss1,
+                 "%d strings, %d distinct codes, %d missing from font 1"
+                 % (n_menu, len(menu_codes), len(miss1)),
+                 "229 strings, 172 codes, 0 missing")
+
+        # 43  COMPANION to 42, and it validates the INSTRUMENT rather than the
+        # data. Gate 42 passes trivially on the shipped disc because the shipped
+        # menu is Japanese and every code it draws is present; a checker that
+        # always returned "nothing missing" would pass it too. So: feed the
+        # checker a code KNOWN to be absent from font 1 and require it to say so,
+        # and assert the two tables actually differ, because if `table` ever
+        # returned the same set for both bases gate 42 would be checking font 2.
+        # 0x8166 is the apostrophe. It has no font 1 entry in the shipped
+        # executable, which is exactly why an English menu cannot use one yet.
+        probe = fonts.missing(fimg, load, fonts.FONT1, {0x8166, 0x8147})
+        t1 = set(fonts.table(fimg, load, fonts.FONT1))
+        t2 = set(fonts.table(fimg, load, fonts.FONT2))
+        rep.gate(43, "the font 1 checker detects a known absence  (COMPANION)",
+                 probe == [0x8147, 0x8166] and len(t1 - t2) == 98
+                 and len(t2 - t1) == 86 and len(t1 & t2) == 435,
+                 "probe reported %d of 2 absent; font1-only %d, font2-only %d,"
+                 " shared %d" % (len(probe), len(t1 - t2), len(t2 - t1),
+                                 len(t1 & t2)),
+                 "both probes absent; 98 / 86 / 435")
     else:
-        for g in (23, 24, 25, 26, 27, 28, 29):
+        for g in (23, 24, 25, 26, 27, 28, 29, 42, 43):
             print("  SKIP gate %d  MIPS gates need SLPM_869.16" % g)
 
     # 35  the bit budget identity. A string's encoded length is the span from its
@@ -695,7 +914,47 @@ def main():
                  eroll == corpusmod.EXE_ROLLUP_EXPECTED,
                  "%s... %d blocks, %d strings"
                  % (eroll[:16], built["exe"]["blocks"], built["exe"]["strings"]),
-                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 2 blocks, 784 strings")
+                 corpusmod.EXE_ROLLUP_EXPECTED[:16] + "... 3 blocks, 1120 strings")
+
+        # 40  The third population, the type 46 MIPS overlays. Gated the same way
+        # the executable subtree is, and with the same reason: a moved archive
+        # roll-up must keep meaning exactly one thing. The companion figures are
+        # asserted alongside the hash so a hash that matches for the wrong reason
+        # still fails. MEASURED, Phase 52 and 53.
+        oroll = built["ov_rollup"]
+        ovs = built["overlay"]
+        rep.gate(40, "corpus overlay subtree roll-up",
+                 (oroll == corpusmod.OVERLAY_ROLLUP_EXPECTED
+                  and ovs["blocks"] == 15 and ovs["strings"] == 1695
+                  and ovs["chars"] == 28602 and ovs["occurrences"] == 451),
+                 "%s... %d blocks, %d strings, %d chars, %d occurrences"
+                 % (oroll[:16], ovs["blocks"], ovs["strings"], ovs["chars"],
+                    ovs["occurrences"]),
+                 corpusmod.OVERLAY_ROLLUP_EXPECTED[:16]
+                 + "... 15 blocks, 1695 strings, 28602 chars, 451 occurrences")
+
+        # 41  COMPANION to 40. A roll-up over 15 files can match while the
+        # LOCATOR is wrong, so assert the property the locator rests on: every
+        # overlay text id is absent from both other populations. If type 46 ever
+        # started duplicating archive ids, gate 40 alone would not notice.
+        ov_ids = set()
+        for line in open(os.path.join(args.corpus_out, "overlay", "blockindex.txt"),
+                         encoding="utf-8"):
+            if line.startswith("#") or "|" not in line:
+                continue
+            ov_ids.add(int(line.split("|")[0].strip(), 16))
+        arch_ids = set()
+        for sector, sub in hbd.text_sub_blocks(blocks):
+            raw = hbd.sub_bytes(arch, sub)
+            if len(raw) >= 24:
+                arch_ids.add(textblock.TextBlock(raw).id)
+        eids = {tb.id for _va, tb in referrers.exe_blocks(exe, load, toff, tsize)}
+        rep.gate(41, "overlay ids are a population of their own  (COMPANION)",
+                 len(ov_ids) == 15 and not (ov_ids & arch_ids) and not (ov_ids & eids),
+                 "%d overlay ids, %d shared with the archive, %d with the executable"
+                 % (len(ov_ids), len(ov_ids & arch_ids), len(ov_ids & eids)),
+                 "15 overlay ids, 0 shared with either")
+
 
         # 34  COMPANION. The corpus must agree with Phase 12 Task D on the operative
         # per-block figure. If the generator and the phase report disagree, one of
@@ -739,6 +998,65 @@ def main():
                     else ", character totals not pinned off-source"))
     else:
         print("  SKIP gates 22, 33, 34  corpus gates need --corpus-out <dir>")
+
+
+    # 44  CARRIER COVERAGE.
+    #
+    # DQ4_2026_08_27_INN.bin passed 35 gates and shipped with 0x047C English in
+    # 65 of its 69 carriers: the four TYPE 44 copies were still Japanese. No
+    # gate covered carrier coverage, so nothing failed.
+    #
+    # scratch/p119/carriers.py had written the warning down -- "if a type 44
+    # carrier holds a byte-different copy of the same id, editing the type 46
+    # copies leaves that one Japanese" -- and it never fired, because a note in
+    # a file is not a gate. This is that note, promoted.
+    #
+    # An id lives in more than one carrier and in more than one MEDIUM: the
+    # executable, type 40/42 sub-blocks, type 44 overlays and type 46 overlay
+    # images. A build that rewrites one medium and not the others produces an
+    # image whose every structural gate passes and whose text is half
+    # translated.
+    if args.edited_ids:
+        want_ids = []
+        for tok in args.edited_ids.split(","):
+            tok = tok.strip()
+            if tok:
+                want_ids.append(int(tok, 16))
+        rows44 = []
+        blind44 = 0
+        for tid in want_ids:
+            copies, blind = _carriers_of(arch, exe, tid)
+            blind44 = max(blind44, blind)
+            if not copies:
+                rows44.append((tid, 0, 0, "id not located in any carrier"))
+                continue
+            # Group by the block's own bytes. Every carrier of one id should
+            # hold the same block after a build; a carrier holding a different
+            # payload is a copy the build did not reach.
+            groups = {}
+            for where, blob in copies:
+                groups.setdefault(hashlib.sha256(blob).hexdigest(), []).append(where)
+            top = max(groups.values(), key=len)
+            rows44.append((tid, len(top), len(copies),
+                           "" if len(groups) == 1 else
+                           "%d distinct payloads; smallest group: %s"
+                           % (len(groups),
+                              ", ".join(sorted(min(groups.values(), key=len))[:4]))))
+        # blind44 is part of the VERDICT, not a footnote. A carrier this scan
+        # could not read is a carrier it did not check, and N/N over a shrunken
+        # denominator is the same string N/N over the true one produces.
+        ok44 = (all(n == m for _, n, m, _ in rows44) and bool(rows44)
+                and blind44 == 0)
+        detail = "; ".join("%04X %d/%d%s" % (t, n, m, (" " + w) if w else "")
+                           for t, n, m, w in rows44)
+        detail += "; %d unexaminable sub-blocks" % blind44
+        rep.gate(44, "carrier coverage, every carrier of every edited id", ok44,
+                 detail,
+                 "N/N on every declared id, both media, 0 unexaminable")
+    else:
+        rep.note(44, "carrier coverage",
+                 "SKIPPED, no --edited-ids. A build that does not declare what "
+                 "it edited cannot be checked for having missed a copy.")
 
     return 0 if rep.summary() else 1
 
