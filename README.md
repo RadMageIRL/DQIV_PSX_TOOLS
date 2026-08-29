@@ -216,6 +216,7 @@ for sector, sub in hbd.text_sub_blocks(blocks):
 
 <img width="1609" height="1337" alt="2026-08-28 10_00_27-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/33624146-fc43-4ab9-a1a2-5f970850e609" />
 
+<img width="1609" height="1337" alt="2026-08-29 11_39_01-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/03455dd6-9251-4f07-ab93-b367d95ef16b" />
 
 ## Credit
 
