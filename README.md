@@ -202,8 +202,6 @@ for sector, sub in hbd.text_sub_blocks(blocks):
 
 ## Additional Screenshots
 
-<img width="1609" height="1337" alt="2026-08-29 11_36_20-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/2f9ce350-9cc8-4029-aa8c-5a66a2e0dc9d" />
-
 <img width="1609" height="1337" alt="2026-08-29 11_34_51-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/7fb99066-8c20-48cf-bf0d-2e46154fbe05" />
 
 <img width="1609" height="1337" alt="2026-08-28 10_05_47-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/cc5301d9-0007-452b-ab6a-ec9150b02dbd" />
@@ -221,6 +219,8 @@ for sector, sub in hbd.text_sub_blocks(blocks):
 ## Some More Menu Widening
 
 <img width="1609" height="1337" alt="2026-08-29 16_15_02-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/d663858d-e182-4f6c-9955-a5a802ffa179" />
+
+<img width="1609" height="1337" alt="2026-08-29 11_36_20-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/2f9ce350-9cc8-4029-aa8c-5a66a2e0dc9d" />
 
 ## Credit
 
