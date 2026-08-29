@@ -218,6 +218,10 @@ for sector, sub in hbd.text_sub_blocks(blocks):
 
 <img width="1609" height="1337" alt="2026-08-29 11_39_01-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/03455dd6-9251-4f07-ab93-b367d95ef16b" />
 
+## Some More Menu Widening
+
+<img width="1609" height="1337" alt="2026-08-29 16_15_02-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/d663858d-e182-4f6c-9955-a5a802ffa179" />
+
 ## Credit
 
 This is built on **Markus Schroeder's** documentation at markus-projects.net and on
