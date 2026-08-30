@@ -63,7 +63,8 @@ dq4/
   dictionary.py   phrase dictionary parse and expansion
   lzs.py          LZSS decompression
   lzs_comp.py     LZSS compression
-  sectortable.py  level sector table access
+  sectortable.py  level sector table access, and the relocation invariant
+  preflight.py    refuse a build whose sector table is wrong, before it writes
   glyph.py        glyph atlas rendering
   fonts.py        the two font tables, reconstructed from the executable
   codes.py        control code table and census
@@ -83,12 +84,13 @@ python verify.py --dq4 "path/to/Dragon Quest IV (Japan).bin"
 Takes a couple of minutes, because it decodes and re-encodes every text sub-block on
 the disc. Output is one line per gate with the measured value and the expected one.
 
-Forty four gates cover source and output integrity, the block scan, the sub-block
+Forty five gates cover source and output integrity, the block scan, the sub-block
 census, sub-block alignment, the text header invariants, a known-good decode, a
 byte-exact round trip, the dictionary, the sector table, the control code census, the
 atlas geometry and its font table, LZS decompression, the STR video band, a MIPS
 disassembler round trip, the four referrer systems, the split-immediate recognizer,
-the bit budget, per-string editability, carrier coverage and the corpus roll-up hash.
+the bit budget, per-string editability, carrier coverage, the sector table relocation
+invariant and the corpus roll-up hash.
 
 Three of them need an argument to run. Gates 22, 33 and 34 need `--corpus-out <dir>`.
 Gate 44, carrier coverage, needs `--edited-ids 047C,048F,...`, the ids a build edited,
@@ -98,7 +100,7 @@ and shipped with one id English in 65 of its 69 carriers, the other four being a
 carrier type nothing had thought to look in.
 
 The count above was taken by counting the distinct gate numbers in `verify.py`, not by
-adding to the previous figure. The numbers run 1 to 45 with no gate 38.
+adding to the previous figure. The numbers run 1 to 46 with no gate 38.
 
 Gate 1 asks whether the image is the pinned source disc. On a disc this library built
 the answer is legitimately no, so it prints as a note rather than a verdict and gate 1b
@@ -135,6 +137,18 @@ a scanner returns zero on unrelated bytes passes just as well when the scanner i
 and returns zero on everything, so each one is followed by the same assertions against an
 input with one site planted. **A control that has never been seen to fail is not a
 control.**
+
+The sector table tests are built the same way and for a sharper reason. The shipped game
+sets bit 31 on two of its 3,283 entries and relocates nothing, so **the shipped game cannot
+falsify a claim about writing.** Five mutants each corrupt a fabricated table in one
+specific way and must be refused, and one of them mutates the DECODER rather than the data,
+because a round trip through a broken decoder is the identity and a data-only check would
+pass on any table forever.
+
+Two of those mutants found holes in the gate itself, and both holes are now tests that
+reproduce them: a gate handed one image as both base and build cannot see a flag dropped
+from both sides, and the relocation check cannot see a missed relocation unless it is given
+the archive the build STARTED from. **Neither was found by reading the gate.**
 
 ## Reading references the code CONSTRUCTS
 
