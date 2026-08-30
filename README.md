@@ -214,6 +214,12 @@ for sector, sub in hbd.text_sub_blocks(blocks):
     print(hex(tb.id), huffman.render(expanded)[:80])
 ```
 
+## Some Ch 2 JP to EN
+
+<img width="1609" height="1337" alt="2026-08-30 13_30_55-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/05dca24d-1abe-4f0a-9439-cbbd87b08059" />
+
+<img width="1609" height="1337" alt="2026-08-30 13_30_51-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/d019efdd-1c56-4e5d-8aba-42c1026ba22d" />
+
 ## Additional Screenshots
 
 <img width="1609" height="1337" alt="2026-08-29 11_34_51-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/7fb99066-8c20-48cf-bf0d-2e46154fbe05" />
