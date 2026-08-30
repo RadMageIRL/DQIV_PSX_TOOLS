@@ -344,6 +344,33 @@ def main():
     rep.gate(14, "lba minus 362 resolves to block headers",
              hits == 3241 and tot == 3283, "%d / %d" % (hits, tot), "3241 / 3283")
 
+    # 46  THE RELOCATION INVARIANT.
+    #
+    # Gates 13 and 14 are read gates: they count entries and count how many
+    # resolve. Neither can see a WRITE go wrong, and relocation is a write.
+    # Bit 31 is a flag, not part of the length, and two entries carry it, so an
+    # entry rebuilt as `length << 20 | lba` silently drops it. Booting cannot
+    # detect that: duplicate copies mask a stale entry, and most byte-identical
+    # block groups hold no drawable text at all.
+    #
+    # Scored here against the disc's own executable as both base and build,
+    # because verify.py is handed ONE image. That form is blind to a flag
+    # dropped from both sides, so the flag check is given the shipped game's
+    # own figure, FLAGGED_INDEXES, rather than the image's. A build comparing
+    # against a DIFFERENT base calls sectortable.check_table directly with the
+    # executable it started from and does not need the constant.
+    strep = sectortable.check_table(
+        exe, exe, blocks, expect_flagged=sectortable.FLAGGED_INDEXES)
+    rep.gate(46, "sector table relocation invariant", strep.ok,
+             "%d/%d checks pass%s"
+             % (len(strep.checks) - len(strep.failures), len(strep.checks),
+                "" if strep.ok
+                else ": " + ", ".join(c.name for c in strep.failures)),
+             "5/5 checks pass")
+    if not strep.ok:
+        for line in strep.lines():
+            print("      %s" % line)
+
     # 15
     rep.gate(15, "distinct non-dummy text ids",
              len(ids_with_real) == 925, len(ids_with_real), 925)
