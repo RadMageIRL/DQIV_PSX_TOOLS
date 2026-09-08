@@ -344,6 +344,33 @@ def main():
     rep.gate(14, "lba minus 362 resolves to block headers",
              hits == 3241 and tot == 3283, "%d / %d" % (hits, tot), "3241 / 3283")
 
+    # 46  THE RELOCATION INVARIANT.
+    #
+    # Gates 13 and 14 are read gates: they count entries and count how many
+    # resolve. Neither can see a WRITE go wrong, and relocation is a write.
+    # Bit 31 is a flag, not part of the length, and two entries carry it, so an
+    # entry rebuilt as `length << 20 | lba` silently drops it. Booting cannot
+    # detect that: duplicate copies mask a stale entry, and most byte-identical
+    # block groups hold no drawable text at all.
+    #
+    # Scored here against the disc's own executable as both base and build,
+    # because verify.py is handed ONE image. That form is blind to a flag
+    # dropped from both sides, so the flag check is given the shipped game's
+    # own figure, FLAGGED_INDEXES, rather than the image's. A build comparing
+    # against a DIFFERENT base calls sectortable.check_table directly with the
+    # executable it started from and does not need the constant.
+    strep = sectortable.check_table(
+        exe, exe, blocks, expect_flagged=sectortable.FLAGGED_INDEXES)
+    rep.gate(46, "sector table relocation invariant", strep.ok,
+             "%d/%d checks pass%s"
+             % (len(strep.checks) - len(strep.failures), len(strep.checks),
+                "" if strep.ok
+                else ": " + ", ".join(c.name for c in strep.failures)),
+             "5/5 checks pass")
+    if not strep.ok:
+        for line in strep.lines():
+            print("      %s" % line)
+
     # 15
     rep.gate(15, "distinct non-dummy text ids",
              len(ids_with_real) == 925, len(ids_with_real), 925)
@@ -619,37 +646,105 @@ def main():
             [b for _v, b in referrers.exe_blocks(exe, load, toff, tsize)
              if b.id == 0x048C][0])
         si_sites = splitimm.find_word_refs(si_text, 0x048C, si_starts, base=load)
-        si_pairs = [(s.hi_off, s.lo_off) for s in si_sites]
-        si_vals = sorted(set(s.value for s in si_sites))
-        # READ-WRITE AGREEMENT. Rewrite both halves at every site to a different
-        # valid reference and rescan. Both halves always, never the low one
-        # alone: a low-half-only patch is correct until the value crosses a
+        # TWO BINS, AND THE SECOND ONE IS WHY THIS GATE USED TO CRASH.
+        #
+        # A site with `hi_off is None` is a low half whose high half this image
+        # does not locate. `dq4/splitimm.py` reports one for its ORPHAN form, and
+        # its docstring now names a second producer measured on 2026-08-28: a
+        # `lui` in a BRANCH DELAY SLOT with the low half at the branch target,
+        # which a linear scan correctly calls dead on the fall-through and never
+        # pairs. The version of this gate at c850644 read `s.hi_off - load` with
+        # no check, so it ran to completion on images that happened to contain no
+        # such site and died with a TypeError partway through the suite on the
+        # first image that did. ONE GATE, FOUR OUTCOMES ACROSS FOUR IMAGES, and
+        # the difference was entirely in the images. That is what an unchecked
+        # None buys, and it is why the two bins are separated here by name.
+        #
+        # The bin is NOT discarded. Dropping it would make this gate quietly
+        # under-report the one population it is least able to model, which is the
+        # opposite of what a companion gate is for.
+        si_paired = [s for s in si_sites if s.hi_off is not None]
+        si_lone = [s for s in si_sites if s.hi_off is None]
+        si_pairs = [(s.hi_off, s.lo_off) for s in si_paired]
+        si_vals = sorted(set(s.value for s in si_paired))
+        # READ-WRITE AGREEMENT. Rewrite both halves at every PAIRED site to a
+        # different valid reference and rescan. Both halves always, never the low
+        # one alone: a low-half-only patch is correct until the value crosses a
         # 0x10000 boundary and then silently is not.
         si_new = (0x048C << 20) | sorted(si_starts)[5]
-        si_buf = bytearray(si_text)
-        for s in si_sites:
-            hi, lo = splitimm.halves(si_new, s.lo_op)
-            for _o, _imm in ((s.hi_off - load, hi), (s.lo_off - load, lo)):
-                _w = struct.unpack_from("<I", si_buf, _o)[0]
-                struct.pack_into("<I", si_buf, _o, (_w & 0xFFFF0000) | _imm)
-        si_again = splitimm.find_word_refs(bytes(si_buf), 0x048C, si_starts,
-                                           base=load)
-        si_rt = ([(s.hi_off, s.lo_off) for s in si_again] == si_pairs
-                 and sorted(set(s.value for s in si_again)) == [si_new])
-        si_ctrl = {t: len(splitimm.find_word_refs(si_text, t, si_starts,
-                                                 base=load))
+        si_buf, _si_w, _si_l = splitimm.rewrite(si_text, si_paired, si_new,
+                                                base=load)
+        si_ag = [s for s in splitimm.find_word_refs(si_buf, 0x048C, si_starts,
+                                                    base=load)
+                 if s.hi_off is not None]
+        si_rt = ([(s.hi_off, s.lo_off) for s in si_ag] == si_pairs
+                 and sorted(set(s.value for s in si_ag)) == [si_new])
+        si_rt_txt = "OK" if si_rt else "FAILED"
+        if not si_paired:
+            # AND THIS IS NOT A PASS AND NOT A FAILURE, it is a round trip that
+            # did not run. `FAILED` on an empty list reads as a disagreement
+            # between reader and writer, and there was no writing to disagree
+            # about. DQ4_2026_08_26_CHAPTER1.bin printed exactly that.
+            si_rt, si_rt_txt = False, "NOT RUN, no paired site"
+        # THE LONE BIN GETS ITS OWN ROUND TRIP, a weaker one, reported on its own
+        # line and never folded into the figure above. All that can be written at
+        # such a site is the 16 bits that are there, so all it can prove is that
+        # this scanner re-finds what it wrote AT THAT OFFSET. It says nothing
+        # about the composed value, because the composed value depends on a high
+        # half nothing here can see, and it is not a licence for a build to patch
+        # one. A weaker measurement reported as weak is worth more than a strong
+        # one reported without its scope.
+        si_low_new = None
+        if si_lone:
+            _cand = sorted(v for v in si_starts
+                           if v <= 0xFFFF and v not in set(s.value
+                                                           for s in si_lone))
+            si_low_new = _cand[0] if _cand else None
+        if not si_lone:
+            si_lrt = "n/a, bin empty"
+        elif si_low_new is None:
+            si_lrt = "NOT RUN, no second 16-bit string start to move to"
+        else:
+            _lbuf, _lw, _ll = splitimm.rewrite(si_text, si_lone, si_low_new,
+                                               base=load)
+            _lag = [s for s in splitimm.find_word_refs(_lbuf, 0x048C, si_starts,
+                                                       base=load)
+                    if s.hi_off is None]
+            si_lrt = "OK" if ([(s.lo_off, s.value) for s in _lag]
+                              == [(s.lo_off, si_low_new)
+                                  for s in si_lone]) else "FAILED"
+        # THE CONTROLS SCORE THE PAIRED BIN ONLY, and that is not a convenience.
+        # A lone low half carries NO ID: its immediate is scored against the
+        # start set alone, so it is credited identically to every id handed in
+        # and its count is the same number for a real id and for a fictional
+        # one. Including it makes each control non-zero on any image that has
+        # one, for a reason that says nothing about whether the recognizer
+        # discriminates ids, which is the only thing this control measures. The
+        # bin is not hidden by the exclusion; it is reported by name above.
+        si_ctrl = {t: len([s for s in splitimm.find_word_refs(
+                               si_text, t, si_starts, base=load)
+                           if s.hi_off is not None])
                    for t in (0x0001, 0x0123, 0x0999, 0x0FFF)}
+        # `not si_lone` IS PART OF THE VERDICT, not a note. A lone low half is a
+        # reference this gate's rewriter cannot complete, so on the pinned source
+        # disc the bin must be empty for the three known sites to be the whole
+        # story. It already had to be: an ORPHAN's `value` is its 16-bit
+        # immediate, so one on this id would have broken `si_vals` at c850644
+        # too. The requirement is now stated instead of implied.
         rep.gate(45, "split-immediate recognizer  (COMPANION)",
                  si_pairs == [(0x8002C070, 0x8002C078), (0x8002C168, 0x8002C170),
                               (0x8008D4AC, 0x8008D4B4)]
-                 and si_vals == [0x048C09A31] and si_rt
+                 and si_vals == [0x048C09A31] and si_rt and not si_lone
                  and not any(si_ctrl.values()),
-                 "%d sites, value(s) %s, rewrite round trip %s, controls %s"
-                 % (len(si_sites), ", ".join("0x%08X" % v for v in si_vals),
-                    "OK" if si_rt else "FAILED",
+                 "%d sites: %d paired, %d with no locatable high half; "
+                 "value(s) %s, paired round trip %s, lone-low round trip %s, "
+                 "controls %s"
+                 % (len(si_sites), len(si_paired), len(si_lone),
+                    ", ".join("0x%08X" % v for v in si_vals) or "none",
+                    si_rt_txt, si_lrt,
                     ", ".join("%04X:%d" % kv for kv in sorted(si_ctrl.items()))),
-                 "3 sites building 0x048C09A31, rewrite round trip OK, "
-                 "0 for every control id")
+                 "3 paired sites building 0x048C09A31, 0 with no locatable "
+                 "high half, rewrite round trip OK, 0 for every control id")
         # 42  MENU TEXT RESOLVES IN FONT 1, which is a different table from the
         # one gate 38 checks. MEASURED, Phase 59: the message box draws from
         # FONT2 and the menus draw from FONT1. The tables are not the same set,

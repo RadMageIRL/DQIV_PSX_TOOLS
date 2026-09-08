@@ -508,6 +508,52 @@ addresses and writing them corrupts the build.
 MEASURED, gate 13. Boundaries are clean: the dword before the table and the dword after it are
 both `0x00000001`, which decodes to a length of zero and is not a valid entry.
 
+### 7a. The two flagged entries, and the gate that guards a write
+
+**MEASURED 2026-08-29, on the pristine Japanese disc `100d87db...`, on
+`DQ4_2026_08_26_CHAPTER1.bin` and on `DQ4_2026_08_29_2023_MERGE.bin`, all three identical: exactly
+2 of the 3,283 entries have bit 31 set, and they are the LAST TWO WORDS OF THE TABLE.**
+
+| index | file offset | raw | 11-bit length | 12-bit length | reads as |
+|---|---|---|---|---|---|
+| 3281 | `0x96938` | `0x80102448` | 1 | 2049 | KSEG0 address `0x80102448` |
+| 3282 | `0x9693C` | `0x80219158` | 2 | 2050 | KSEG0 address `0x80219158` |
+
+They are the two overlay load addresses named above, which is why bit 31 is set on them and on
+nothing else: **INFERRED, from the value reading as a RAM address and from neither target holding a
+block header.** Neither is a level pointer, and **MEASURED: the 12-bit decode followed by a rebuild
+turns `0x80219158` into `0x00219158`.** That is the only damage the old form could do, and it takes
+a write to do it.
+
+**The reader was re-read to its `jr ra` at `0x800593B0` to confirm the widths**: `and v0,v0,a2`
+with `a2 = 0x000FFFFF` at `0x800592EC` for the lba, `srl v0,v0,31` at `0x80059300` for the flag,
+which is deposited in bit 2 of the per-level status word, and `srl v0,a1,20` then
+`andi v0,v0,0x07FF` at `0x80059338` for the length. **The three fields tile 32 bits exactly.**
+
+`dq4/sectortable.py` supplies `pack()`, `repack()` and `flag()`. **Assemble an entry with
+`repack(v, lba=...)`, never by hand**: `repack` carries bit 31 across, and `pack` raises rather
+than letting a length over 2047 spill into it.
+
+`sectortable.check_table(base_exe, built_exe, built_blocks)` is the build-time invariant over the
+whole table, and it is **gate 46**. Five checks: the field layout tiles 32 bits and every word
+re-encodes to itself; bit 31 is set on exactly the indexes that carried it on the base; no two
+live entries' sector extents intersect; every text sub-block sits in a block a live entry names,
+with the entry's length equal to that block's own stored `nsec` and the sub-block inside the
+declared extent; and the entry count, the boundary words and the set of live entries are
+unchanged. **MEASURED on all three discs: 3,241 live entries, 3,241 distinct start sectors, zero
+extent clashes, 1,528 text sub-blocks all inside their entry.**
+
+**Two arguments are optional and a build must still pass both**, because each closes a hole that a
+deliberately broken table walked straight through:
+
+- **`base_blocks`**, `hbd.scan_blocks()` over the archive the build started from. Without it,
+  check 5 resolves the base entries against the BUILT archive, so a relocation whose entry was
+  never rewritten reads as non-live on both sides and slips through. **That is the exact failure
+  the invariant exists to catch, and it passed all five checks until this argument existed.**
+- **`expect_flagged`**, for a caller that has only one image and passes it as both base and build,
+  which is verify.py's position. Comparing an image against itself cannot notice a flag dropped
+  from both sides. Pass `sectortable.FLAGGED_INDEXES`, which is the shipped game's own figure.
+
 ### The LBA base is 362
 
 The 20-bit field is an absolute disc LBA. **Subtract 362**, the ISO LBA of `HBD1PS1D.Q41`, to
