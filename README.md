@@ -267,24 +267,36 @@ included here.
 A third-party project has characterised the contribution here as the discovery
 of the Font 1 atlas.
 
-That undersells it by a wide margin. 28 of the 38 files in this repository were
-redistributed in that project's archives, 27 of them byte-identical, with my
-module docstrings intact. `dq4/__init__.py` in that tree still opens with the
-line it opens with here.
+The copying is not the problem. I published this under MIT so that people could
+copy it. The problem is that the one thing MIT asks for in exchange is the one
+thing that kept not happening, and each time I asked, the description got
+smaller rather than more accurate. First it was insights and tooling adapted
+from this project. Then it was a discovery of the Font 1 atlas. Then my name
+was removed from that project's README entirely.
 
-Font 1 is one measurement out of many, and the atlas reader is one of twenty-one
-modules. What was taken is the codec, the tree builder, both LZS directions, all
+What is in that project's archives is 28 of the 38 files published here, 27 of
+them byte-identical, with my module docstrings intact. `dq4/__init__.py` in
+that tree still opens with the line it opens with here, describing every module
+as a port of a result that was measured and gated in phases 0 through 3c. That
+is the codec, the tree builder, both directions of the LZSS compression, all
 three referrer systems, the split-immediate scanner, the sector table parser,
-both font table reconstructions, the glyph atlas reader, the R3000A disassembler
-and assembler, the archive scanner, the corpus generator, the dictionary
-expander, the EDC/ECC recalculator, the ISO reader, the disc writer and the
-sector table preflight.
+both font table reconstructions, the glyph atlas reader, the R3000A
+disassembler and assembler, the archive scanner, the corpus generator, the
+dictionary expander, the EDC/ECC recalculator, the ISO reader, the disc writer
+and the sector table preflight.
 
-I asked three times that the description be corrected and the license included.
-The license was eventually added to two archives. The description was not
-corrected. In response to my ask they removed mentioning my name in their readme.
-I feel my ask was a very low bar considering the work I made public for free.
+The part that sits worst is being described as a contributor to that project. I
+did not contribute to it. I built a toolchain, published it, and it turned up
+in someone else's archives with the work it performs credited to their team and
+to an AI model.
+
+I asked three times that the description be corrected and the licence included.
+The licence was eventually added to two archives. The description was not
+corrected, the issue was closed as completed with items outstanding, and my
+ability to reopen it was disabled.
 
 This is recorded here for the same reason the gate numbers are in `FORMAT.md`:
 so that what is claimed can be checked rather than argued about. The files, the
 docstrings and the request history are all public.
+
+My ask was a low bar for work I made public for free.
