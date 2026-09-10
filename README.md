@@ -261,3 +261,105 @@ MIT. See `LICENSE`.
 
 The license covers this library. It does not cover the game, and no game data is
 included here.
+## What this is
+
+This is not a font table dump and it is not a set of notes. It is a working
+toolchain for the Dragon Quest IV PlayStation disc: 21 modules, roughly 6,000
+lines, stdlib only, no dependencies.
+
+It reads the disc, decodes the text, finds everything that points at that text,
+rebuilds it, and writes it back so the game still boots.
+
+**Reading the disc**
+
+`iso.py` opens a Mode 2 Form 1 image and walks ISO9660. `hbd.py` scans
+`HBD1PS1D.Q41`, applies the block validity filter, and censuses sub-block types
+across the archive. `sectortable.py` finds the sector table in `SLPM_869.16` by
+its probe pattern and parses every entry.
+
+**Text**
+
+`textblock.py` parses the six-int header and derives the region boundaries.
+`huffman.py` builds the per-block tree and walks every leaf with its depth,
+slot, kind, value and bit code, decoding and encoding both ways.
+`treebuild.py` builds a tree from symbol frequencies and emits it in the
+engine's own dual-base layout. `dictionary.py` parses the phrase table and
+expands the `0x7Exx` references, without which dictionary-built strings come
+back truncated rather than absent. `codes.py` carries the control code table
+and the codes present in the data but missing from the published one.
+`corpus.py` regenerates the entire decoded corpus from a disc in one command.
+
+**Compression**
+
+`lzs.py` and `lzs_comp.py`. The decompressor accounts for the overrun the
+shipped data actually contains rather than the length it declares.
+
+**Every pointer into a string**
+
+This is the part that decides whether a rebuild renders or hangs, and it is
+three modules because the references live in three different forms.
+`referrers.py` covers the systems that store the packed word
+`(text id << 20) | bit offset`. `splitimm.py` covers the ones built across two
+instructions, which a 32-bit word scan structurally cannot see. `overlay.py`
+reaches the text blocks embedded inside the type 46 MIPS overlays, 600 of which
+are LZS compressed.
+
+**Fonts**
+
+`fonts.py` reconstructs both font tables from executable bytes. A character code
+reaches a glyph through a chained hash, not arithmetic, and there are two tables
+keyed differently for different parts of the interface. `glyph.py` reads the
+4bpp atlas: cell extraction, ink extents, ASCII art, atlas discovery.
+
+**Code**
+
+`mips.py` is an R3000A disassembler and assembler. The pair is the point. A
+decoder alone can be wrong in ways nothing catches; a round trip through both
+is a gate.
+
+**Writing a disc**
+
+`discbuild.py` writes back in place. `edcecc.py` recalculates Mode 2 EDC and
+ECC for raw 2352-byte sectors. `preflight.py` runs before any image is written,
+because a partial or flag-dropping sector relocation is invisible to booting:
+duplicate copies mask a stale entry and the disc looks fine until it does not.
+
+**Proof**
+
+`verify.py` runs the gate suite against your own disc. `FORMAT.md` documents the
+format with a gate number on every claim, or an explicit INFERRED or UNKNOWN
+where there is not one. Nothing here asks to be taken on trust.
+
+---
+
+If you are working on this game, this is the starting point. Whether it saves
+you months is measurable rather than a matter of opinion: clone it, point
+`verify.py` at your own disc, and see what it tells you about the format before
+you have written a line of your own.
+
+### A note on how this has been described
+
+A third-party project has characterised the contribution here as the discovery
+of the Font 1 atlas.
+
+That undersells it by a wide margin. 28 of the 38 files in this repository were
+redistributed in that project's archives, 27 of them byte-identical, with my
+module docstrings intact. `dq4/__init__.py` in that tree still opens with the
+line it opens with here.
+
+Font 1 is one measurement out of many, and the atlas reader is one of twenty-one
+modules. What was taken is the codec, the tree builder, both LZS directions, all
+three referrer systems, the split-immediate scanner, the sector table parser,
+both font table reconstructions, the glyph atlas reader, the R3000A disassembler
+and assembler, the archive scanner, the corpus generator, the dictionary
+expander, the EDC/ECC recalculator, the ISO reader, the disc writer and the
+sector table preflight.
+
+I asked three times that the description be corrected and the licence included.
+The licence was eventually added to two archives. The description was not
+corrected. In response to my ask they removed mentioning my name in their readme.
+I feel my ask was a very low bar considering the work I made public for free.
+
+This is recorded here for the same reason the gate numbers are in `FORMAT.md`:
+so that what is claimed can be checked rather than argued about. The files, the
+docstrings and the request history are all public.
