@@ -280,8 +280,8 @@ and assembler, the archive scanner, the corpus generator, the dictionary
 expander, the EDC/ECC recalculator, the ISO reader, the disc writer and the
 sector table preflight.
 
-I asked three times that the description be corrected and the licence included.
-The licence was eventually added to two archives. The description was not
+I asked three times that the description be corrected and the license included.
+The license was eventually added to two archives. The description was not
 corrected. In response to my ask they removed mentioning my name in their readme.
 I feel my ask was a very low bar considering the work I made public for free.
 
