@@ -214,6 +214,14 @@ for sector, sub in hbd.text_sub_blocks(blocks):
     print(hex(tb.id), huffman.render(expanded)[:80])
 ```
 
+## The Casino
+<img width="1246" height="1016" alt="2026-09-10 22_25_58-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/0e8df5d9-8ef5-432d-a64c-7b2d5bc5c672" />
+<img width="1246" height="1016" alt="2026-09-10 22_26_02-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/d4328cbb-2e70-404c-b9b1-488fa3e89962" />
+<img width="1246" height="1016" alt="2026-09-10 22_26_15-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/09ea5edf-8792-4aca-8a85-f20cd4951cde" />
+<img width="1246" height="1016" alt="2026-09-10 22_26_24-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/3c3bfc7c-af4d-4836-8e93-c37c22878cc1" />
+<img width="1246" height="1016" alt="2026-09-10 22_26_30-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/614d5f0a-d957-4e7e-8609-7b325470738c" />
+
+
 ## Initial Ch 3 JP to EN
 
 <img width="1371" height="1186" alt="2026-09-07 20_51_44-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/2da88e9f-8ee9-40c0-aaab-99c71152d004" />
