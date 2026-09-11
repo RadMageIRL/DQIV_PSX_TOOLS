@@ -299,4 +299,8 @@ This is recorded here for the same reason the gate numbers are in `FORMAT.md`:
 so that what is claimed can be checked rather than argued about. The files, the
 docstrings and the request history are all public.
 
+The same project credits me in four places for edcre.exe, a PSX EDC/ECC recalculator. I did not write it, have never published it, and had no involvement with it. It is by Alex Free and its own banner carries a GPLv2 notice. It is redistributed there as a binary with no source, no written offer and no copy of the GPLv2 text.
+
+I am noting that here because my name is on it and the record should be straight.
+
 My ask was a low bar for work I made public for free.
