@@ -1,3 +1,7 @@
+** Update 9/10/2026 - Additional Info at [dq4translation.com](https://dq4translation.com) any finalized repo/patch will be published there **
+<br>
+** This repo is proof of ability to translate DQ4 and some tools I decided to make public for the sake of the community **
+
 # DQIV_PSX_TOOLS
 
 A read-only Python library for reading Dragon Quest IV on the PlayStation
