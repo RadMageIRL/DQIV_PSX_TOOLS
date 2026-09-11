@@ -265,7 +265,8 @@ included here.
 ### A note on how this has been described
 
 A third-party project has characterised the contribution here as the discovery
-of the Font 1 atlas.
+of the Font 1 atlas. That's a significant understatement and their understanding
+of the Font 1 atlas is flawed.
 
 The copying is not the problem. I published this under MIT so that people could
 copy it. The problem is that the one thing MIT asks for in exchange is the one
@@ -290,6 +291,9 @@ did not contribute to it. I built a toolchain, published it, and it turned up
 in someone else's archives with the work it performs credited to their team and
 to an AI model.
 
+You do not take someone else's good faith work, remove attribution and licensing
+then present it as your own work when it matches the original byte for byte.
+
 I asked three times that the description be corrected and the licence included.
 The licence was eventually added to two archives. The description was not
 corrected, the issue was closed as completed with items outstanding, and my
@@ -299,7 +303,10 @@ This is recorded here for the same reason the gate numbers are in `FORMAT.md`:
 so that what is claimed can be checked rather than argued about. The files, the
 docstrings and the request history are all public.
 
-The same project credits me in four places for edcre.exe, a PSX EDC/ECC recalculator. I did not write it, have never published it, and had no involvement with it. It is by Alex Free and its own banner carries a GPLv2 notice. It is redistributed there as a binary with no source, no written offer and no copy of the GPLv2 text.
+The same project credits me in four places for edcre.exe, a PSX EDC/ECC recalculator.
+I did not write it, have never published it, and had no involvement with it. It is by 
+Alex Free and its own banner carries a GPLv2 notice. It is redistributed there as a 
+binary with no source, no written offer and no copy of the GPLv2 text.
 
 I am noting that here because my name is on it and the record should be straight.
 
