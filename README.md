@@ -306,7 +306,7 @@ to an AI model.
 You do not take someone else's good faith work, remove attribution and licensing
 then present it as your own work when it matches the original byte for byte.
 
-I asked three times that the description be corrected and the licence included.
+I asked three times that the description be corrected and the license included.
 The licence was eventually added to two archives. The description was not
 corrected, the issue was closed as completed with items outstanding, and my
 ability to reopen it was disabled.
