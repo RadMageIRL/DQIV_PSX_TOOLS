@@ -218,7 +218,7 @@ for sector, sub in hbd.text_sub_blocks(blocks):
     print(hex(tb.id), huffman.render(expanded)[:80])
 ```
 
-## Title / Name Select / Load
+## Title / Name Select / Continue
 <img width="1246" height="1016" alt="title-1" src="https://github.com/user-attachments/assets/dd622df7-d416-4f99-8cd8-c49d30b4daec" />
 <img width="1246" height="1016" alt="title-2" src="https://github.com/user-attachments/assets/f4dd5ee3-948d-4280-b348-41789506ed10" />
 <img width="1246" height="1016" alt="title-3" src="https://github.com/user-attachments/assets/91f42fa1-2f73-4856-bbfc-e55fed8a261f" />
