@@ -218,6 +218,11 @@ for sector, sub in hbd.text_sub_blocks(blocks):
     print(hex(tb.id), huffman.render(expanded)[:80])
 ```
 
+## Title / Name Select / Load
+<img width="1246" height="1016" alt="title-1" src="https://github.com/user-attachments/assets/dd622df7-d416-4f99-8cd8-c49d30b4daec" />
+<img width="1246" height="1016" alt="title-2" src="https://github.com/user-attachments/assets/f4dd5ee3-948d-4280-b348-41789506ed10" />
+<img width="1246" height="1016" alt="title-3" src="https://github.com/user-attachments/assets/91f42fa1-2f73-4856-bbfc-e55fed8a261f" />
+
 ## The Casino
 <img width="1246" height="1016" alt="2026-09-10 22_25_58-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/0e8df5d9-8ef5-432d-a64c-7b2d5bc5c672" />
 <img width="1246" height="1016" alt="2026-09-10 22_26_02-ドラゴンクエストⅣ　導かれし者たち" src="https://github.com/user-attachments/assets/d4328cbb-2e70-404c-b9b1-488fa3e89962" />
