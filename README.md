@@ -328,3 +328,58 @@ binary with no source, no written offer and no copy of the GPLv2 text.
 I am noting that here because my name is on it and the record should be straight.
 
 My ask was a low bar for work I made public for free.
+
+## On the "world first" claim
+
+A third-party project describes its release as a world-first playable
+English boot of Dragon Quest IV on PlayStation. That is not what happened,
+and the dates are public.
+
+### What is on the record
+
+**Before 2026-08-20.** I had a working playable build with translated
+lines running on the native Japanese engine. It was not published.
+
+**2026-08-20.** `DQIV_PSX_TOOLS` first commit, `a13fa8d`. The `LICENSE`
+file carries a 2026 copyright. This is the first public release of any
+toolchain for this game beyond the prior research it was built on.
+
+**August 2026.** A full scene rendering in English, on hardware, shown
+in this repository with the screenshot that evidences it.
+
+**2026-08-23.** The third-party project posted publicly that it was
+giving up on the PlayStation build and moving to a Super Famicom port,
+because the PlayStation engine was too difficult to reverse engineer at
+that time. That post is in the RomHacking.net thread for the project and
+is still there.
+
+**September 2026.** 28 of the 38 files published here appear in that
+project's archives, 27 of them byte-identical to my `dev` branch, with my
+module docstrings intact.
+
+### What I claim and what I do not
+
+I claim the first published toolchain for this game after Markus
+Schroeder's research, dated 2026-08-20 and verifiable from the commit
+history.
+
+I claim a working playable build with translated lines predating that
+date, evidenced by what is shown in this repository.
+
+I do not claim to have done this alone or first in every sense. Markus
+Schroeder published the HBD archive research that both projects start
+from, and Mandy Wilkens published extraction tooling before either. Both
+are credited by name in this repository and in `FORMAT.md`.
+
+### Why this note exists
+
+Not to argue about priority. Priority is a small thing and I would not
+have written this for its own sake.
+
+It exists because the same document that claims the world first credits
+my contribution as a single coordinate, and files it among a list of
+prior attempts that stalled. The files are here, the dates are here, and
+both are checkable against the commit history and against that project's
+own repository.
+
+Anyone who wants to verify any of it can clone both and compare.
