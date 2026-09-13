@@ -338,6 +338,10 @@ A third-party project describes its release as a world-first playable
 English boot of Dragon Quest IV on PlayStation. That is not what happened,
 and the dates are public.
 
+This third-party project continues to rename my tools while retaining my code.
+They do not properly include my name or license with same code, instead
+calling it their own code/tools.
+
 ### What is on the record
 
 **Before 2026-08-20.** I had a working playable build with translated
