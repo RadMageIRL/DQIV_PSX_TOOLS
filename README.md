@@ -275,6 +275,11 @@ This is built on **Markus Schroeder's** documentation at markus-projects.net and
 with a fuller acknowledgement, including which specific observation of Markus's made
 the tree decodable at all.
 
+**Martin Korth** - psx-spx
+I kept coming back to psx-spx, Martin Korth's exceptional PlayStation hardware and BIOS reference. It was a constant point of reference throughout this project: for CPU 
+specifications, kernel BIOS table and function semantics, exception-frame layout, and GPU primitive and CLUT bitfield decoding. Its depth and precision let me check
+assumptions against the hardware rather than merely guess at them.
+
 ## License
 
 MIT. See `LICENSE`.
