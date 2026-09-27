@@ -1,4 +1,4 @@
-# Dragon Quest IV PSX English Translation — RC1 Provenance Record
+# Dragon Quest IV PSX English Translation - RC1 Provenance Record
 
 **Author:** RadMageIRL  
 **Date:** 2026-09-27  
